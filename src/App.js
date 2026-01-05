@@ -1,57 +1,67 @@
 import React, { useState, useEffect } from 'react';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import Login from './login';
+import { doc, getDoc } from 'firebase/firestore';
+import Login from './Login';
+import CharacterCreation from './CharacterCreation';
+import Game from './pages/Game';
 
 function App() {
   const [user, setUser] = useState(null);
+  const [playerData, setPlayerData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      
+      if (currentUser) {
+        // Check if player character exists
+        const playerDoc = await getDoc(doc(db, 'players', currentUser.uid));
+        if (playerDoc.exists()) {
+          setPlayerData(playerDoc.data());
+        } else {
+          setPlayerData(null); // No character yet
+        }
+      } else {
+        setPlayerData(null);
+      }
+      
       setLoading(false);
     });
     
     return unsubscribe;
   }, []);
 
-  const handleLogout = async () => {
-    await signOut(auth);
+  const handleCharacterCreated = async () => {
+    // Reload player data after character creation
+    const playerDoc = await getDoc(doc(db, 'players', user.uid));
+    if (playerDoc.exists()) {
+      setPlayerData(playerDoc.data());
+    }
   };
 
+  // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <p className="text-white">Loading...</p>
+      <div className="min-h-screen bg-paper flex items-center justify-center">
+        <p className="text-ink mono">Loading...</p>
       </div>
     );
   }
 
+  // Not logged in - show login
   if (!user) {
     return <Login onLoginSuccess={() => {}} />;
   }
 
-  return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Simple Wuxia</h1>
-          <button
-            onClick={handleLogout}
-            className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
-          >
-            Logout
-          </button>
-        </div>
-        
-        <div className="bg-gray-800 p-6 rounded-lg">
-          <p className="text-gray-300">Welcome, {user.email}!</p>
-          <p className="text-gray-400 mt-2">Your adventure begins here...</p>
-        </div>
-      </div>
-    </div>
-  );
+  // Logged in but no character - show character creation
+  if (!playerData) {
+    return <CharacterCreation user={user} onCharacterCreated={handleCharacterCreated} />;
+  }
+
+  // Has character - show game
+  return <Game playerData={playerData} onPlayerUpdate={handleCharacterCreated} />;
 }
 
 export default App;

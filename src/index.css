@@ -1,3 +1,27 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-paper text-ink;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-accent hover:bg-accent-light text-white font-semibold py-2 px-4 border border-ink transition-colors;
+  }
+  
+  .btn-secondary {
+    @apply bg-white hover:bg-gray-100 text-ink font-semibold py-2 px-4 border border-ink transition-colors;
+  }
+  
+  .card {
+    @apply bg-white border border-border p-6 shadow-sm;
+  }
+  
+  .input-field {
+    @apply w-full px-3 py-2 bg-white border border-border focus:border-ink focus:outline-none text-ink;
+  }
+}

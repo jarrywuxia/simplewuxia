@@ -11,16 +11,34 @@ import { STAT_POINTS_PER_STAGE, DEEP_MEDITATION_COST, XP_PER_STAGE } from '../ga
 
 function MeditationPage({ playerData, onPlayerUpdate }) {
   const [cooldown, setCooldown] = useState(0);
-  const [messages, setMessages] = useState([]);
+  const [currentMessage, setCurrentMessage] = useState('');
+  const [displayedWords, setDisplayedWords] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // Cooldown timer
   useEffect(() => {
     if (cooldown > 0) {
-      const timer = setTimeout(() => setCooldown(c => c - 1), 1000);
+      const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
       return () => clearTimeout(timer);
     }
   }, [cooldown]);
+
+  // Word-by-word reveal effect
+  useEffect(() => {
+    if (!currentMessage) {
+      setDisplayedWords([]);
+      return;
+    }
+
+    const words = currentMessage.split(' ');
+    setDisplayedWords([]);
+    
+    words.forEach((word, index) => {
+      setTimeout(() => {
+        setDisplayedWords(prev => [...prev, word]);
+      }, index * 150); // 150ms delay between each word
+    });
+  }, [currentMessage]);
 
   // Update energy on mount and periodically
   useEffect(() => {
@@ -33,15 +51,12 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     };
     
     updateEnergy();
-    const interval = setInterval(updateEnergy, 60000); // Check every minute
+    const interval = setInterval(updateEnergy, 60000);
     return () => clearInterval(interval);
   }, [playerData, onPlayerUpdate]);
 
-  const addMessage = (msg) => {
-    setMessages(prev => [
-      { text: msg, id: Date.now() + Math.random() }, // Add randomness to ensure uniqueness
-      ...prev
-    ].slice(0, 10));
+  const displayMessage = (msg) => {
+    setCurrentMessage(msg);
   };
 
   const handleQuickMeditation = async () => {
@@ -49,7 +64,6 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     
     setLoading(true);
     const rewards = generateQuickMeditationReward(playerData);
-    addMessage(rewards.message);
     
     const newExperience = playerData.experience + rewards.experience;
     const newSpiritStones = playerData.spiritStones + rewards.spiritStones;
@@ -66,13 +80,16 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     });
     
     if (advancementCheck.shouldAdvance) {
+      const overflow = newExperience - playerData.experienceNeeded;
       updateData.realmIndex = advancementCheck.newRealmIndex;
       updateData.stageIndex = advancementCheck.newStageIndex;
-      updateData.experience = newExperience - playerData.experienceNeeded;
+      updateData.experience = overflow;
       updateData.experienceNeeded = XP_PER_STAGE * (advancementCheck.newRealmIndex + 1);
       updateData.unallocatedPoints = playerData.unallocatedPoints + STAT_POINTS_PER_STAGE;
       
-      addMessage('🌟 ' + advancementCheck.message + ' You gained ' + STAT_POINTS_PER_STAGE + ' stat points!');
+      displayMessage('🌟 ' + advancementCheck.message + ' You gained ' + STAT_POINTS_PER_STAGE + ' stat points!');
+    } else {
+      displayMessage(rewards.message);
     }
     
     await updateDoc(doc(db, 'players', playerData.userId), updateData);
@@ -87,7 +104,6 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     
     setLoading(true);
     const rewards = generateDeepMeditationReward(playerData);
-    addMessage(rewards.message);
     
     const newExperience = playerData.experience + rewards.experience;
     const newSpiritStones = playerData.spiritStones + rewards.spiritStones;
@@ -106,13 +122,16 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     });
     
     if (advancementCheck.shouldAdvance) {
+      const overflow = newExperience - playerData.experienceNeeded;
       updateData.realmIndex = advancementCheck.newRealmIndex;
       updateData.stageIndex = advancementCheck.newStageIndex;
-      updateData.experience = newExperience - playerData.experienceNeeded;
+      updateData.experience = overflow;
       updateData.experienceNeeded = XP_PER_STAGE * (advancementCheck.newRealmIndex + 1);
       updateData.unallocatedPoints = playerData.unallocatedPoints + STAT_POINTS_PER_STAGE;
       
-      addMessage('🌟 ' + advancementCheck.message + ' You gained ' + STAT_POINTS_PER_STAGE + ' stat points!');
+      displayMessage('🌟 ' + advancementCheck.message + ' You gained ' + STAT_POINTS_PER_STAGE + ' stat points!');
+    } else {
+      displayMessage(rewards.message);
     }
     
     await updateDoc(doc(db, 'players', playerData.userId), updateData);
@@ -123,60 +142,69 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
 
   return (
     <div className="space-y-4">
-      <div className="card">
-        <h2 className="text-2xl font-bold text-ink mb-4 font-serif border-b border-border pb-2">
-          Meditation Chamber
-        </h2>
-        
-        <p className="text-ink-light italic mb-4 text-sm">
-          Focus your mind and absorb the spiritual energy of the world...
-        </p>
-
-        {/* Meditation Buttons */}
-        <div className="space-y-3">
-          <div>
-            <button
-              onClick={handleQuickMeditation}
-              disabled={cooldown > 0 || loading}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {cooldown > 0 ? `Quick Meditation (${cooldown}s)` : 'Quick Meditation'}
-            </button>
-            <p className="text-ink-light text-xs mt-1 mono">
-              10 second cooldown • Small rewards
+      {/* Message Display Box - SimpleMMO style with word-by-word reveal */}
+      <div className="card flex flex-col justify-center items-center text-center p-6 bg-gradient-to-br from-white to-gray-50">
+        <p className="text-ink-light italic text-sm mb-3">You meditate...</p>
+        <div className="w-full flex items-center justify-center">
+          {currentMessage ? (
+            <p className="text-ink font-serif text-lg leading-relaxed">
+              {currentMessage.split(' ').map((word, index) => (
+                <span
+                  key={index}
+                  className="inline-block mr-1"
+                  style={{
+                    opacity: displayedWords.length > index ? 1 : 0,
+                    transition: 'opacity 0.5s ease-in'
+                  }}
+                >
+                  {word}
+                </span>
+              ))}
             </p>
-          </div>
-          
-          <div>
-            <button
-              onClick={handleDeepMeditation}
-              disabled={playerData.energy < DEEP_MEDITATION_COST || loading}
-              className="btn-secondary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Deep Meditation ({DEEP_MEDITATION_COST} Energy)
-            </button>
-            <p className="text-ink-light text-xs mt-1 mono">
-              Costs {DEEP_MEDITATION_COST} energy • Guaranteed large rewards
+          ) : (
+            <p className="text-ink-light italic">
+              Focus your mind and cultivate your spirit...
             </p>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Message Log */}
-      {messages.length > 0 && (
-        <div className="card">
-          <h3 className="text-lg font-bold text-ink mb-3 font-serif border-b border-border pb-2">
-            Cultivation Log
-          </h3>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {messages.map(msg => (
-              <div key={msg.id} className="border-l-2 border-accent pl-3 py-1 bg-white text-sm">
-                <p className="text-ink mono">{msg.text}</p>
-              </div>
-            ))}
-          </div>
+      {/* Meditation Buttons */}
+      <div className="space-y-3">
+        <div>
+          <button
+            onClick={handleQuickMeditation}
+            disabled={cooldown > 0 || loading}
+            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed text-lg py-3"
+          >
+            {cooldown > 0 ? (
+              <>
+                🧘 Quick Meditation ({cooldown}s)
+              </>
+            ) : (
+              <>
+                🧘 Quick Meditation
+              </>
+            )}
+          </button>
+          <p className="text-ink-light text-xs mt-2 mono text-center">
+            10 second cooldown • Small rewards
+          </p>
         </div>
-      )}
+        
+        <div>
+          <button
+            onClick={handleDeepMeditation}
+            disabled={playerData.energy < DEEP_MEDITATION_COST || loading}
+            className="btn-secondary w-full disabled:opacity-50 disabled:cursor-not-allowed text-lg py-3"
+          >
+            ⚡ Deep Meditation ({DEEP_MEDITATION_COST} Energy)
+          </button>
+          <p className="text-ink-light text-xs mt-2 mono text-center">
+            Costs {DEEP_MEDITATION_COST} energy • Guaranteed large rewards
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

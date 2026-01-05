@@ -9,12 +9,25 @@ import {
 } from '../utils/meditationSystem';
 import { STAT_POINTS_PER_STAGE, DEEP_MEDITATION_COST, XP_PER_STAGE } from '../gameData';
 
+const QUICK_MEDITATION_COOLDOWN = 10; // seconds
+
 function MeditationPage({ playerData, onPlayerUpdate }) {
   const [cooldown, setCooldown] = useState(0);
   const [currentMessage, setCurrentMessage] = useState('');
-  const [messageId, setMessageId] = useState(0); // Unique ID to force re-render
+  const [messageId, setMessageId] = useState(0);
   const [displayedWords, setDisplayedWords] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Calculate initial cooldown based on last meditation time
+  useEffect(() => {
+    const now = Date.now();
+    const timeSinceLastMeditation = now - (playerData.lastMeditationTime || 0);
+    const remainingCooldown = QUICK_MEDITATION_COOLDOWN - Math.floor(timeSinceLastMeditation / 1000);
+    
+    if (remainingCooldown > 0) {
+      setCooldown(remainingCooldown);
+    }
+  }, [playerData.lastMeditationTime]);
 
   // Cooldown timer
   useEffect(() => {
@@ -32,19 +45,15 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     }
 
     const words = currentMessage.split(' ');
-    // We do not setDisplayedWords([]) here because we want the 
-    // new component instance (triggered by key change) to start empty naturally
-    
     const timeouts = [];
 
     words.forEach((word, index) => {
       const timer = setTimeout(() => {
         setDisplayedWords(prev => [...prev, word]);
-      }, index * 150); // 150ms delay between each word
+      }, index * 150);
       timeouts.push(timer);
     });
 
-    // Cleanup function to stop typing if component unmounts or message changes quickly
     return () => timeouts.forEach(clearTimeout);
   }, [messageId, currentMessage]);
 
@@ -64,9 +73,9 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
   }, [playerData, onPlayerUpdate]);
 
   const displayMessage = (msg) => {
-    setDisplayedWords([]); // Clear words immediately
+    setDisplayedWords([]);
     setCurrentMessage(msg);
-    setMessageId(prev => prev + 1); // Increment ID to force full DOM rebuild
+    setMessageId(prev => prev + 1);
   };
 
   const handleQuickMeditation = async () => {
@@ -77,11 +86,12 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     
     const newExperience = playerData.experience + rewards.experience;
     const newSpiritStones = playerData.spiritStones + rewards.spiritStones;
+    const meditationTime = Date.now();
     
     let updateData = {
       experience: newExperience,
       spiritStones: newSpiritStones,
-      lastMeditationTime: Date.now()
+      lastMeditationTime: meditationTime
     };
     
     const advancementCheck = checkRealmAdvancement({ 
@@ -105,7 +115,7 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     await updateDoc(doc(db, 'players', playerData.userId), updateData);
     await onPlayerUpdate();
     
-    setCooldown(10);
+    setCooldown(QUICK_MEDITATION_COOLDOWN);
     setLoading(false);
   };
 
@@ -152,13 +162,11 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
 
   return (
     <div className="space-y-4">
-      {/* Message Display Box - SimpleMMO style with word-by-word reveal */}
+      {/* Message Display Box - Word-by-word reveal */}
       <div className="card flex flex-col justify-center items-center text-center p-6 bg-gradient-to-br from-white to-gray-50">
         <p className="text-ink-light italic text-sm mb-3">You meditate...</p>
         <div className="w-full flex items-center justify-center">
           {currentMessage ? (
-            // key={messageId} forces this element to be destroyed and recreated every time
-            // a new message comes in, ensuring the animation starts fresh.
             <p key={messageId} className="text-ink font-serif text-lg leading-relaxed">
               {currentMessage.split(' ').map((word, index) => (
                 <span

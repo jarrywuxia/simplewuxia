@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import Login from './Login';
+import Login from './login';
 import CharacterCreation from './CharacterCreation';
 import Game from './pages/Game';
 

@@ -12,6 +12,7 @@ import { STAT_POINTS_PER_STAGE, DEEP_MEDITATION_COST, XP_PER_STAGE } from '../ga
 function MeditationPage({ playerData, onPlayerUpdate }) {
   const [cooldown, setCooldown] = useState(0);
   const [currentMessage, setCurrentMessage] = useState('');
+  const [messageId, setMessageId] = useState(0); // Unique ID to force re-render
   const [displayedWords, setDisplayedWords] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -31,14 +32,21 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     }
 
     const words = currentMessage.split(' ');
-    setDisplayedWords([]);
+    // We do not setDisplayedWords([]) here because we want the 
+    // new component instance (triggered by key change) to start empty naturally
     
+    const timeouts = [];
+
     words.forEach((word, index) => {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         setDisplayedWords(prev => [...prev, word]);
       }, index * 150); // 150ms delay between each word
+      timeouts.push(timer);
     });
-  }, [currentMessage]);
+
+    // Cleanup function to stop typing if component unmounts or message changes quickly
+    return () => timeouts.forEach(clearTimeout);
+  }, [messageId, currentMessage]);
 
   // Update energy on mount and periodically
   useEffect(() => {
@@ -56,7 +64,9 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
   }, [playerData, onPlayerUpdate]);
 
   const displayMessage = (msg) => {
+    setDisplayedWords([]); // Clear words immediately
     setCurrentMessage(msg);
+    setMessageId(prev => prev + 1); // Increment ID to force full DOM rebuild
   };
 
   const handleQuickMeditation = async () => {
@@ -147,7 +157,9 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
         <p className="text-ink-light italic text-sm mb-3">You meditate...</p>
         <div className="w-full flex items-center justify-center">
           {currentMessage ? (
-            <p className="text-ink font-serif text-lg leading-relaxed">
+            // key={messageId} forces this element to be destroyed and recreated every time
+            // a new message comes in, ensuring the animation starts fresh.
+            <p key={messageId} className="text-ink font-serif text-lg leading-relaxed">
               {currentMessage.split(' ').map((word, index) => (
                 <span
                   key={index}

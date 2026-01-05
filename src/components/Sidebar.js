@@ -2,16 +2,16 @@ import React from 'react';
 
 function Sidebar({ currentPage, onNavigate, onLogout, isOpen, onClose }) {
   const pages = [
-    { id: 'meditation', label: 'Meditation', icon: '🧘' },
-    { id: 'combat', label: 'Combat', icon: '⚔️' },
-    { id: 'inventory', label: 'Inventory', icon: '🎒' },
-    { id: 'profile', label: 'Profile', icon: '👤' }
+    { id: 'meditation', label: 'Meditation', icon: ' ' },
+    { id: 'combat', label: 'Combat', icon: ' ' },
+    { id: 'inventory', label: 'Inventory', icon: ' ' },
+    { id: 'profile', label: 'Profile', icon: ' ' }
   ];
 
   return (
     <aside
       className={`
-        fixed top-0 left-0 h-full bg-white border-r-2 border-border z-40
+        fixed top-0 left-0 h-full bg-paper border-r-2 border-border z-40
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         w-64
@@ -23,27 +23,27 @@ function Sidebar({ currentPage, onNavigate, onLogout, isOpen, onClose }) {
           <h2 className="text-2xl font-bold text-ink font-serif">Menu</h2>
           <button
             onClick={onClose}
-            className="text-ink hover:text-accent text-2xl w-8 h-8 flex items-center justify-center"
+            className="text-ink hover:text-accent text-2xl w-8 h-8 flex items-center justify-center transition-colors"
             aria-label="Close menu"
           >
             ✕
           </button>
         </div>
 
-        <nav className="space-y-2">
+        <nav className="space-y-3">
           {pages.map(page => (
             <button
               key={page.id}
               onClick={() => onNavigate(page.id)}
               className={`
-                w-full text-left px-4 py-3 border border-border transition-colors
+                w-full text-left px-4 py-3 border transition-all duration-200
                 ${currentPage === page.id
-                  ? 'bg-accent text-white font-semibold'
-                  : 'bg-white text-ink hover:bg-gray-100'
+                  ? 'bg-accent border-accent text-white font-semibold shadow-md'
+                  : 'bg-white border-border text-ink hover:border-accent hover:text-accent'
                 }
               `}
             >
-              <span className="mr-2">{page.icon}</span>
+              <span className="mr-3">{page.icon}</span>
               {page.label}
             </button>
           ))}
@@ -52,7 +52,7 @@ function Sidebar({ currentPage, onNavigate, onLogout, isOpen, onClose }) {
         <div className="mt-8 pt-4 border-t border-border">
           <button
             onClick={onLogout}
-            className="w-full bg-ink hover:bg-ink-light text-white px-4 py-2 border border-ink transition-colors text-sm"
+            className="w-full bg-white hover:bg-gray-50 text-ink px-4 py-2 border border-border hover:border-accent transition-colors text-sm font-semibold"
           >
             Logout
           </button>

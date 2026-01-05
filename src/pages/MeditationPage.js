@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
@@ -8,8 +8,9 @@ import {
   calculateCurrentEnergy 
 } from '../utils/meditationSystem';
 import { STAT_POINTS_PER_STAGE, DEEP_MEDITATION_COST, XP_PER_STAGE } from '../gameData';
+import FloatingReward from '../components/FloatingReward';
 
-const QUICK_MEDITATION_COOLDOWN = 10; // seconds
+const QUICK_MEDITATION_COOLDOWN = 10;
 
 function MeditationPage({ playerData, onPlayerUpdate }) {
   const [cooldown, setCooldown] = useState(0);
@@ -17,17 +18,26 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
   const [messageId, setMessageId] = useState(0);
   const [displayedWords, setDisplayedWords] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showRewards, setShowRewards] = useState(null);
+
+  // Memoize the callback to prevent infinite re-renders
+  const hideRewards = useCallback(() => {
+    setShowRewards(null);
+  }, []);
 
   // Calculate initial cooldown based on last meditation time
   useEffect(() => {
     const now = Date.now();
     const timeSinceLastMeditation = now - (playerData.lastMeditationTime || 0);
-    const remainingCooldown = QUICK_MEDITATION_COOLDOWN - Math.floor(timeSinceLastMeditation / 1000);
+    
+    // FIX: Use the specific duration saved in DB, otherwise fall back to default
+    const duration = playerData.lastCooldownDuration || QUICK_MEDITATION_COOLDOWN;
+    const remainingCooldown = duration - Math.floor(timeSinceLastMeditation / 1000);
     
     if (remainingCooldown > 0) {
       setCooldown(remainingCooldown);
     }
-  }, [playerData.lastMeditationTime]);
+  }, [playerData.lastMeditationTime, playerData.lastCooldownDuration]);
 
   // Cooldown timer
   useEffect(() => {
@@ -84,14 +94,23 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     setLoading(true);
     const rewards = generateQuickMeditationReward(playerData);
     
+    // Show floating rewards
+    setShowRewards({
+      experience: rewards.experience,
+      spiritStones: rewards.spiritStones
+    });
+    
     const newExperience = playerData.experience + rewards.experience;
     const newSpiritStones = playerData.spiritStones + rewards.spiritStones;
     const meditationTime = Date.now();
+    // FIX: Get the specific cooldown from the event
+    const actualCooldown = rewards.cooldown || QUICK_MEDITATION_COOLDOWN;
     
     let updateData = {
       experience: newExperience,
       spiritStones: newSpiritStones,
-      lastMeditationTime: meditationTime
+      lastMeditationTime: meditationTime,
+      lastCooldownDuration: actualCooldown // FIX: Save specific duration to DB
     };
     
     const advancementCheck = checkRealmAdvancement({ 
@@ -115,7 +134,7 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     await updateDoc(doc(db, 'players', playerData.userId), updateData);
     await onPlayerUpdate();
     
-    setCooldown(QUICK_MEDITATION_COOLDOWN);
+    setCooldown(actualCooldown);
     setLoading(false);
   };
 
@@ -124,6 +143,12 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     
     setLoading(true);
     const rewards = generateDeepMeditationReward(playerData);
+    
+    // Show floating rewards
+    setShowRewards({
+      experience: rewards.experience,
+      spiritStones: rewards.spiritStones
+    });
     
     const newExperience = playerData.experience + rewards.experience;
     const newSpiritStones = playerData.spiritStones + rewards.spiritStones;
@@ -162,7 +187,15 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
 
   return (
     <div className="space-y-4">
-      {/* Message Display Box - Word-by-word reveal */}
+      {/* Floating reward popup */}
+      {showRewards && (
+        <FloatingReward 
+          rewards={showRewards} 
+          onComplete={hideRewards}
+        />
+      )}
+
+      {/* Message Display Box */}
       <div className="card flex flex-col justify-center items-center text-center p-6 bg-gradient-to-br from-white to-gray-50">
         <p className="text-ink-light italic text-sm mb-3">You meditate...</p>
         <div className="w-full flex items-center justify-center">
@@ -199,16 +232,16 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
           >
             {cooldown > 0 ? (
               <>
-                🧘 Quick Meditation ({cooldown}s)
+                <img src="/assets/icons/S_Ice06.png" alt="" className="w-5 h-5 inline-block mr-2" /> Quick Meditation ({cooldown}s)
               </>
             ) : (
               <>
-                🧘 Quick Meditation
+                <img src="/assets/icons/S_Ice06.png" alt="" className="w-5 h-5 inline-block mr-2" /> Quick Meditation
               </>
             )}
           </button>
           <p className="text-ink-light text-xs mt-2 mono text-center">
-            10 second cooldown • Small rewards
+            {cooldown > 0 ? 'Recuperating...' : 'Small chance for experience and spirit stones'}
           </p>
         </div>
         

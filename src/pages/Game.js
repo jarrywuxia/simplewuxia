@@ -85,8 +85,8 @@ function Game({ playerData, onPlayerUpdate }) {
                   <div className="bg-accent h-full transition-all" style={{ width: `${xpProgress}%` }} />
                 </div>
               </div>
-              <div>
-                <p className="text-ink-light text-xs">Stones</p>
+              <div className="flex items-center">
+                <p className="text-ink-light text-xs mr-1">Stones</p> <img src="/assets/icons/system/SODA_Icon_Orbs_Orb6.png" alt="" width="32" height="32" className="w-5 h-5 inline-block mr-2" style={{imageRendering:'pixelated'}} />
                 <p className="font-semibold text-accent mono">{playerData.spiritStones}</p>
               </div>
               <div>

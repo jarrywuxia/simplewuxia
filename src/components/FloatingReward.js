@@ -58,7 +58,7 @@ function FloatingReward({ rewards, onComplete }) {
         {rewards.experience > 0 && (
           // Changed to solid Black
           // Added a small white drop-shadow to ensure the black text is readable if background is dark
-          <div className="text-sm text-black" style={{ textShadow: '1px 1px 0px rgba(255,255,255,0.8)' }}>
+          <div className="text-sm text-black" style={{ textShadow: '1px 1px 0px rgba(97, 97, 97, 0.8)' }}>
             +{rewards.experience} XP
           </div>
         )}
@@ -66,7 +66,7 @@ function FloatingReward({ rewards, onComplete }) {
         {rewards.spiritStones > 0 && (
           // Blue light (sky-400) with a glow effect
           <div className="text-xs text-sky-400" style={{ textShadow: '0 0 8px rgba(56, 189, 248, 0.6)' }}>
-            +{rewards.spiritStones} Spirit Stones
+            +{rewards.spiritStones} <img src="/assets/icons/system/SODA_Icon_Orbs_Orb6.png" alt="" width="32" height="32" className="w-5 h-5 inline-block mr-2" style={{imageRendering:'pixelated'}} />
           </div>
         )}
         

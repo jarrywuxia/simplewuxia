@@ -232,11 +232,11 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
           >
             {cooldown > 0 ? (
               <>
-                <img src="/assets/icons/S_Ice06.png" alt="" className="w-5 h-5 inline-block mr-2" /> Quick Meditation ({cooldown}s)
+                <img src="/assets/icons/system/S_Ice06.png" alt="" className="w-5 h-5 inline-block mr-2" /> Quick Meditation ({cooldown}s)
               </>
             ) : (
               <>
-                <img src="/assets/icons/S_Ice06.png" alt="" className="w-5 h-5 inline-block mr-2" /> Quick Meditation
+                <img src="/assets/icons/system/S_Ice06.png" alt="" className="w-5 h-5 inline-block mr-2" /> Quick Meditation
               </>
             )}
           </button>
@@ -251,7 +251,7 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
             disabled={playerData.energy < DEEP_MEDITATION_COST || loading}
             className="btn-secondary w-full disabled:opacity-50 disabled:cursor-not-allowed text-lg py-3"
           >
-            ⚡ Deep Meditation ({DEEP_MEDITATION_COST} Energy)
+            <img src="/assets/icons/system/SODA_Icon_System_Misc_Electric.png" alt="" width="32" height="32" className="w-5 h-5 inline-block mr-2" style={{imageRendering:'pixelated'}} /> Deep Meditation ({DEEP_MEDITATION_COST} Energy)
           </button>
           <p className="text-ink-light text-xs mt-2 mono text-center">
             Costs {DEEP_MEDITATION_COST} energy • Guaranteed large rewards

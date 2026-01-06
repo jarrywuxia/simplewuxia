@@ -32,7 +32,7 @@ export const meditationEvents = [
     id: 'insight_minor',
     message: 'A minor insight flashes through your mind!',
     weight: 15,
-    cooldown: 11, // Longer cooldown for better rewards
+    cooldown: 5, // Longer cooldown for better rewards
     rewards: {
       experience: { min: 20, max: 40 },
       spiritStones: { min: 5, max: 10 }
@@ -47,7 +47,7 @@ export const meditationEvents = [
     id: 'breakthrough_major',
     message: 'The heavens tremble as you achieve a profound breakthrough!',
     weight: 2,
-    cooldown: 30, // Much longer cooldown for rare event
+    cooldown: 7, // Much longer cooldown for rare event
     rewards: {
       experience: { min: 100, max: 200 },
       spiritStones: { min: 50, max: 100 }
@@ -62,7 +62,7 @@ export const meditationEvents = [
     id: 'celestial_vision',
     message: 'You glimpse the celestial dao and your understanding deepens.',
     weight: 10,
-    cooldown: 20,
+    cooldown: 7,
     rewards: {
       experience: { min: 50, max: 100 },
       spiritStones: { min: 20, max: 40 }

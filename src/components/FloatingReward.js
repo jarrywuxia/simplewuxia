@@ -65,7 +65,7 @@ function FloatingReward({ rewards, onComplete }) {
         
         {rewards.spiritStones > 0 && (
           // Blue light (sky-400) with a glow effect
-          <div className="text-xs text-sky-400" style={{ textShadow: '0 0 8px rgba(56, 189, 248, 0.6)' }}>
+          <div className="text-xs text-sky-400" style={{ textShadow: '1px 1px 0px rgba(56, 189, 248, 0.6)' }}>
             +{rewards.spiritStones} <img src="/assets/icons/system/SODA_Icon_Orbs_Orb6.png" alt="" width="32" height="32" className="w-5 h-5 inline-block mr-2" style={{imageRendering:'pixelated'}} />
           </div>
         )}

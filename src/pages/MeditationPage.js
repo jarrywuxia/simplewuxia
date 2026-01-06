@@ -1,13 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { 
-  generateQuickMeditationReward, 
-  generateDeepMeditationReward,
-  checkRealmAdvancement,
-  calculateCurrentEnergy 
-} from '../utils/meditationSystem';
-import { STAT_POINTS_PER_STAGE, DEEP_MEDITATION_COST, XP_PER_STAGE } from '../gameData';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase';
+import { DEEP_MEDITATION_COST } from '../gameData';
 import FloatingReward from '../components/FloatingReward';
 
 const QUICK_MEDITATION_COOLDOWN = 10;
@@ -25,12 +19,12 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     setShowRewards(null);
   }, []);
 
-  // Calculate initial cooldown based on last meditation time
+  // Calculate initial cooldown based on last meditation time from Server Data
   useEffect(() => {
     const now = Date.now();
     const timeSinceLastMeditation = now - (playerData.lastMeditationTime || 0);
     
-    // FIX: Use the specific duration saved in DB, otherwise fall back to default
+    // Use the duration saved by server, or default to 10
     const duration = playerData.lastCooldownDuration || QUICK_MEDITATION_COOLDOWN;
     const remainingCooldown = duration - Math.floor(timeSinceLastMeditation / 1000);
     
@@ -39,7 +33,7 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     }
   }, [playerData.lastMeditationTime, playerData.lastCooldownDuration]);
 
-  // Cooldown timer
+  // Cooldown timer tick
   useEffect(() => {
     if (cooldown > 0) {
       const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
@@ -67,122 +61,56 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     return () => timeouts.forEach(clearTimeout);
   }, [messageId, currentMessage]);
 
-  // Update energy on mount and periodically
-  useEffect(() => {
-    const updateEnergy = async () => {
-      const energyData = calculateCurrentEnergy(playerData);
-      if (energyData.energy !== playerData.energy) {
-        await updateDoc(doc(db, 'players', playerData.userId), energyData);
-        onPlayerUpdate();
-      }
-    };
-    
-    updateEnergy();
-    const interval = setInterval(updateEnergy, 60000);
-    return () => clearInterval(interval);
-  }, [playerData, onPlayerUpdate]);
-
   const displayMessage = (msg) => {
     setDisplayedWords([]);
     setCurrentMessage(msg);
     setMessageId(prev => prev + 1);
   };
 
-  const handleQuickMeditation = async () => {
-    if (cooldown > 0 || loading) return;
-    
-    setLoading(true);
-    const rewards = generateQuickMeditationReward(playerData);
-    
-    // Show floating rewards
-    setShowRewards({
-      experience: rewards.experience,
-      spiritStones: rewards.spiritStones
-    });
-    
-    const newExperience = playerData.experience + rewards.experience;
-    const newSpiritStones = playerData.spiritStones + rewards.spiritStones;
-    const meditationTime = Date.now();
-    // FIX: Get the specific cooldown from the event
-    const actualCooldown = rewards.cooldown || QUICK_MEDITATION_COOLDOWN;
-    
-    let updateData = {
-      experience: newExperience,
-      spiritStones: newSpiritStones,
-      lastMeditationTime: meditationTime,
-      lastCooldownDuration: actualCooldown // FIX: Save specific duration to DB
-    };
-    
-    const advancementCheck = checkRealmAdvancement({ 
-      ...playerData, 
-      experience: newExperience 
-    });
-    
-    if (advancementCheck.shouldAdvance) {
-      const overflow = newExperience - playerData.experienceNeeded;
-      updateData.realmIndex = advancementCheck.newRealmIndex;
-      updateData.stageIndex = advancementCheck.newStageIndex;
-      updateData.experience = overflow;
-      updateData.experienceNeeded = XP_PER_STAGE * (advancementCheck.newRealmIndex + 1);
-      updateData.unallocatedPoints = playerData.unallocatedPoints + STAT_POINTS_PER_STAGE;
-      
-      displayMessage('🌟 ' + advancementCheck.message + ' You gained ' + STAT_POINTS_PER_STAGE + ' stat points!');
-    } else {
-      displayMessage(rewards.message);
-    }
-    
-    await updateDoc(doc(db, 'players', playerData.userId), updateData);
-    await onPlayerUpdate();
-    
-    setCooldown(actualCooldown);
-    setLoading(false);
-  };
+  // --- SERVER INTERACTION ---
 
-  const handleDeepMeditation = async () => {
-    if (playerData.energy < DEEP_MEDITATION_COST || loading) return;
-    
+  const handleMeditation = async (type) => {
+    if (loading) return;
+    if (type === 'quick' && cooldown > 0) return;
+    if (type === 'deep' && playerData.energy < DEEP_MEDITATION_COST) return;
+
     setLoading(true);
-    const rewards = generateDeepMeditationReward(playerData);
-    
-    // Show floating rewards
-    setShowRewards({
-      experience: rewards.experience,
-      spiritStones: rewards.spiritStones
-    });
-    
-    const newExperience = playerData.experience + rewards.experience;
-    const newSpiritStones = playerData.spiritStones + rewards.spiritStones;
-    const newEnergy = playerData.energy - DEEP_MEDITATION_COST;
-    
-    let updateData = {
-      experience: newExperience,
-      spiritStones: newSpiritStones,
-      energy: newEnergy,
-      lastEnergyUpdate: Date.now()
-    };
-    
-    const advancementCheck = checkRealmAdvancement({ 
-      ...playerData, 
-      experience: newExperience 
-    });
-    
-    if (advancementCheck.shouldAdvance) {
-      const overflow = newExperience - playerData.experienceNeeded;
-      updateData.realmIndex = advancementCheck.newRealmIndex;
-      updateData.stageIndex = advancementCheck.newStageIndex;
-      updateData.experience = overflow;
-      updateData.experienceNeeded = XP_PER_STAGE * (advancementCheck.newRealmIndex + 1);
-      updateData.unallocatedPoints = playerData.unallocatedPoints + STAT_POINTS_PER_STAGE;
-      
-      displayMessage('🌟 ' + advancementCheck.message + ' You gained ' + STAT_POINTS_PER_STAGE + ' stat points!');
-    } else {
-      displayMessage(rewards.message);
+
+    try {
+      // 1. Call the Cloud Function
+      const meditateFn = httpsCallable(functions, 'meditate');
+      const result = await meditateFn({ type });
+      const data = result.data;
+
+      // 2. Show Rewards (Visual only)
+      setShowRewards({
+        experience: data.rewards.experience,
+        spiritStones: data.rewards.spiritStones
+      });
+
+      // 3. Display Server Message
+      displayMessage(data.message);
+
+      // 4. Update Cooldown if exists
+      if (data.cooldown) {
+        setCooldown(data.cooldown);
+      }
+
+      // 5. Force update the UI with new player data
+      // (The server updated DB, but we trigger a refresh to be sure)
+      await onPlayerUpdate();
+
+    } catch (error) {
+      console.error("Meditation error:", error);
+      // Handle specific error codes if you want
+      if (error.code === 'failed-precondition') {
+        displayMessage("You cannot meditate right now.");
+      } else {
+        displayMessage("A mysterious force disrupts your cultivation... (Server Error)");
+      }
+    } finally {
+      setLoading(false);
     }
-    
-    await updateDoc(doc(db, 'players', playerData.userId), updateData);
-    await onPlayerUpdate();
-    
-    setLoading(false);
   };
 
   return (
@@ -226,7 +154,7 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
       <div className="space-y-3">
         <div>
           <button
-            onClick={handleQuickMeditation}
+            onClick={() => handleMeditation('quick')}
             disabled={cooldown > 0 || loading}
             className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed text-lg py-3"
           >
@@ -247,7 +175,7 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
         
         <div>
           <button
-            onClick={handleDeepMeditation}
+            onClick={() => handleMeditation('deep')}
             disabled={playerData.energy < DEEP_MEDITATION_COST || loading}
             className="btn-secondary w-full disabled:opacity-50 disabled:cursor-not-allowed text-lg py-3"
           >

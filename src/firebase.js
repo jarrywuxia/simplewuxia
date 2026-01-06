@@ -7,6 +7,7 @@ import { getFirestore } from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
 // ADDED: Import Cloud Functions SDK
 import { getFunctions } from "firebase/functions"; 
+import { getDatabase } from "firebase/database"; // ADD THIS
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -28,3 +29,4 @@ export const db = getFirestore(app);
 export const analytics = getAnalytics(app);
 // ADDED: Initialize and export functions
 export const functions = getFunctions(app);
+export const rtdb = getDatabase(app); // ADD AND EXPORT THIS

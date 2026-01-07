@@ -23,6 +23,8 @@ function Game({ playerData, onPlayerUpdate }) {
     await signOut(auth);
   };
 
+  // --- HANDLERS ---
+
   const handleAllocateStat = async (statName) => {
     if (actionLoading || playerData.unallocatedPoints <= 0) return;
     setActionLoading(true);
@@ -32,6 +34,27 @@ function Game({ playerData, onPlayerUpdate }) {
       await onPlayerUpdate(); 
     } catch (err) {
       console.error("Allocation failed:", err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUseItem = async (itemId) => {
+    if (actionLoading || !itemId) return;
+    
+    setActionLoading(true);
+    try {
+      // RENAMED from useItemFn to consumeItem to avoid ESLint Hook error
+      const consumeItem = httpsCallable(functions, 'useItem'); 
+      const result = await consumeItem({ itemId });
+      
+      console.log(result.data.message); 
+      setSelectedItem(null); // Close the modal
+      await onPlayerUpdate(); // Refresh the UI with new energy and inventory
+      
+    } catch (err) {
+      console.error("Consumption failed:", err);
+      alert(err.message || "Failed to use item.");
     } finally {
       setActionLoading(false);
     }
@@ -92,20 +115,31 @@ function Game({ playerData, onPlayerUpdate }) {
             <h2 className="text-xl font-bold text-ink font-serif uppercase tracking-widest">Chat</h2>
             <button onClick={() => setIsChatOpen(false)} className="text-ink text-xl">✕</button>
           </div>
-          <div className="flex-1 overflow-hidden">
-            <ChatBox playerData={playerData} />
-          </div>
+          <div className="flex-1 overflow-hidden"><ChatBox playerData={playerData} /></div>
         </div>
       </aside>
 
-      {/* Item Modal (Global for Inventory) */}
+      {/* Item Modal (Shared by Inventory and Meditation Loot) */}
       <ItemModal 
         item={selectedItem} 
         onClose={() => setSelectedItem(null)} 
         actions={
-          <button className="btn-primary w-full py-2 uppercase tracking-widest text-xs">
-            {selectedItem?.type === 'weapon' ? 'Equip Weapon' : 'Consume Item'}
-          </button>
+          <div className="flex flex-col gap-2">
+            {selectedItem?.type === 'consumable' && (
+              <button 
+                disabled={actionLoading}
+                onClick={() => handleUseItem(selectedItem.id)}
+                className="btn-primary w-full py-2 uppercase tracking-widest text-xs disabled:opacity-50"
+              >
+                {actionLoading ? 'Consuming...' : 'Consume Item'}
+              </button>
+            )}
+            {selectedItem?.type === 'weapon' && (
+              <button className="btn-primary w-full py-2 uppercase tracking-widest text-xs">
+                Equip Weapon
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -170,7 +204,6 @@ function Game({ playerData, onPlayerUpdate }) {
                         onClick={() => setSelectedItem(itemDetails)} 
                         className="flex gap-4 p-3 border border-border bg-stone-50 hover:bg-white transition-all cursor-pointer group"
                       >
-                        {/* ICON WITH PIXEL RENDERING */}
                         <div className="w-12 h-12 bg-white border border-border flex items-center justify-center shadow-sm p-1">
                           {itemDetails.icon ? (
                             <img 

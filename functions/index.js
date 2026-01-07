@@ -177,3 +177,53 @@ exports.allocateStat = onCall(async (request) => {
         return { success: true, newStatValue: currentStatValue + 1 };
     });
 });
+
+// At the very top of functions/index.js
+const MASTER_ITEMS = require('./masterItems'); 
+
+// Add this to your exports
+exports.useItem = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
+
+    const { itemId } = request.data;
+    const uid = request.auth.uid;
+    const playerRef = db.collection('players').doc(uid);
+
+    return await db.runTransaction(async (transaction) => {
+        const playerDoc = await transaction.get(playerRef);
+        if (!playerDoc.exists) throw new HttpsError('not-found', 'Player not found.');
+
+        const data = playerDoc.data();
+        
+        // 1. Validate the Item exists in the Master List
+        const itemDef = MASTER_ITEMS[itemId];
+        if (!itemDef || itemDef.type !== 'consumable') {
+            throw new HttpsError('invalid-argument', 'This item cannot be consumed.');
+        }
+
+        // 2. Check if the player actually has it
+        let inventory = data.inventory || [];
+        const itemIndex = inventory.findIndex(i => i.id === itemId);
+        if (itemIndex === -1 || inventory[itemIndex].quantity <= 0) {
+            throw new HttpsError('failed-precondition', 'You do not have this item.');
+        }
+
+        // 3. Apply the Effect
+        let updateData = {};
+        if (itemDef.effect.type === 'restore_energy') {
+            const maxEnergy = 100;
+            updateData.energy = Math.min(maxEnergy, (data.energy || 0) + itemDef.effect.value);
+        }
+
+        // 4. Update Inventory (Stacking logic)
+        if (inventory[itemIndex].quantity > 1) {
+            inventory[itemIndex].quantity -= 1;
+        } else {
+            inventory.splice(itemIndex, 1);
+        }
+        updateData.inventory = inventory;
+
+        transaction.update(playerRef, updateData);
+        return { success: true, message: `Consumed ${itemDef.name}` };
+    });
+});

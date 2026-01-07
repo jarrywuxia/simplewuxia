@@ -1,4 +1,4 @@
-// Game configuration and data structures
+// src/gameData.js
 
 export const REALMS = [
   { name: 'Spirit Gathering', stages: ['Early', 'Intermediate', 'Late', 'Peak'] },
@@ -34,13 +34,27 @@ export const createNewPlayer = (userId, displayName) => ({
   experience: 0,
   experienceNeeded: XP_PER_STAGE,
   
-  // Stats
+  // COMBAT & TECHNIQUE DATA
+  learnedTechniques: ['iron_fist', 'gather_qi', 'spirit_shield'], // Everyone starts with this
+  
+  // The 5 Slots (null means empty)
+  equippedTechniques: [
+    'iron_fist', // Slot 1
+    'gather_qi', // Slot 2
+    'spirit_shield',        // Slot 3
+    null,        // Slot 4
+    null         // Slot 5
+  ],
+  
+  // STATS
+  // 'qi' is now the direct value for your Max Qi pool
   stats: {
     strength: 5,
     defense: 5,
-    qiPower: 5,
+    qi: 50, // Starts at 50
     maxHp: 100,
   },
+  
   currentHp: 100,
   
   // Points to allocate

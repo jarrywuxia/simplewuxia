@@ -149,7 +149,7 @@ exports.allocateStat = onCall(async (request) => {
     const uid = request.auth.uid;
     const playerRef = db.collection('players').doc(uid);
 
-    const allowedStats = ['strength', 'defense', 'qiPower', 'maxHp'];
+    const allowedStats = ['strength', 'defense', 'qi', 'maxHp'];
     if (!allowedStats.includes(statName)) {
         throw new HttpsError('invalid-argument', 'Invalid stat name.');
     }
@@ -171,6 +171,9 @@ exports.allocateStat = onCall(async (request) => {
 
         if (statName === 'maxHp') {
             updateData[`stats.${statName}`] = currentStatValue + 20;
+        }
+        if (statName === 'qi') {
+             updateData[`stats.${statName}`] = currentStatValue + 10;
         }
 
         transaction.update(playerRef, updateData);
@@ -346,5 +349,94 @@ exports.unequipItem = onCall(async (request) => {
         });
 
         return { success: true, message: 'Item unequipped.' };
+    });
+});
+
+// Add this to your exports
+exports.equipTechnique = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
+    
+    const { slotIndex, techniqueId } = request.data;
+    const uid = request.auth.uid;
+    const playerRef = db.collection('players').doc(uid);
+
+    // Validation
+    if (slotIndex < 0 || slotIndex > 4) {
+        throw new HttpsError('invalid-argument', 'Invalid slot index (0-4).');
+    }
+
+    return await db.runTransaction(async (transaction) => {
+        const playerDoc = await transaction.get(playerRef);
+        if (!playerDoc.exists) throw new HttpsError('not-found', 'Player not found.');
+
+        const data = playerDoc.data();
+        let equipped = data.equippedTechniques || [null, null, null, null, null];
+        const learned = data.learnedTechniques || [];
+
+        // If equipping (not clearing)
+        if (techniqueId) {
+            // 1. Do they know it?
+            if (!learned.includes(techniqueId)) {
+                throw new HttpsError('failed-precondition', 'You have not learned this technique.');
+            }
+            // 2. Is it already equipped in another slot?
+            const existingIndex = equipped.indexOf(techniqueId);
+            if (existingIndex > -1 && existingIndex !== slotIndex) {
+                // Swap or Clear? Let's just clear the old slot for simplicity
+                equipped[existingIndex] = null;
+            }
+        }
+
+        // Set the new slot
+        equipped[slotIndex] = techniqueId;
+
+        transaction.update(playerRef, { equippedTechniques: equipped });
+
+        return { success: true, message: 'Technique slot updated.' };
+    });
+}); 
+
+// ... existing imports
+const { simulateCombat } = require('./combat/simulator');
+const { ENEMIES } = require('./combat/enemies');
+
+exports.pveFight = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
+    
+    const { enemyId } = request.data;
+    const uid = request.auth.uid;
+    const playerRef = db.collection('players').doc(uid);
+
+    return await db.runTransaction(async (transaction) => {
+        const playerDoc = await transaction.get(playerRef);
+        if (!playerDoc.exists) throw new HttpsError('not-found', 'Player not found.');
+
+        const playerData = playerDoc.data();
+        const enemyData = ENEMIES[enemyId];
+
+        if (!enemyData) throw new HttpsError('not-found', 'Enemy not found.');
+
+        // 1. Run Simulation
+        const result = simulateCombat(playerData, enemyData);
+
+        // 2. Apply Results
+        if (result.winner === 'player') {
+             const newXp = (playerData.experience || 0) + (result.rewards.exp || 0);
+             const newStones = (playerData.spiritStones || 0) + (result.rewards.stones || 0);
+             
+             // Simple update (You can reuse your existing leveling logic here later)
+             transaction.update(playerRef, {
+                 experience: newXp,
+                 spiritStones: newStones
+             });
+        }
+
+        // 3. Return Log to Client
+        return {
+            success: true,
+            winner: result.winner,
+            log: result.log,
+            rewards: result.winner === 'player' ? result.rewards : null
+        };
     });
 });

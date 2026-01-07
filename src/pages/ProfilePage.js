@@ -1,7 +1,7 @@
 import React from 'react';
 import { getItem } from '../data/items';
 
-const STAT_ORDER = ['strength', 'defense', 'qiPower', 'maxHp'];
+const STAT_ORDER = ['strength', 'defense', 'qi', 'maxHp'];
 
 function ProfilePage({ playerData, onAllocateStat, onItemClick, actionLoading }) {
   return (

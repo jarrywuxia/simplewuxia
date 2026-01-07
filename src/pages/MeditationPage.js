@@ -52,7 +52,7 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
     words.forEach((word, index) => {
       const timer = setTimeout(() => {
         setDisplayedWords(prev => [...prev, word]);
-      }, index * 150);
+      }, (index + 1) * 150);
       timeouts.push(timer);
     });
 
@@ -163,7 +163,7 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
               )}
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase opacity-70 text-amber-900">Discovery!</p>
+              <p className="text-[10px] font-bold uppercase opacity-70 text-amber-900">Found Item!</p>
               <h4 className="font-bold font-serif leading-none text-amber-950">{recentLoot.name}</h4>
             </div>
           </div>

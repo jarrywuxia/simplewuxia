@@ -28,7 +28,7 @@ function InventoryPage({ inventory, onItemClick }) {
   return (
     <div className="card min-h-[500px]">
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-border pb-4 gap-4">
-        <h2 className="text-2xl font-bold text-ink font-serif">Bag of Holding</h2>
+        <h2 className="text-2xl font-bold text-ink font-serif">Inventory</h2>
         
         {/* Search & Filter Controls */}
         <div className="flex gap-2 w-full md:w-auto">

@@ -15,6 +15,7 @@ import MeditationPage from './MeditationPage';
 import InventoryPage from './InventoryPage';
 import ProfilePage from './ProfilePage';
 import CombatPage from './CombatPage';
+import TechniquesPage from './TechniquesPage'; // ADDED
 
 function Game({ playerData, onPlayerUpdate }) {
   const [currentPage, setCurrentPage] = useState('meditation');
@@ -25,7 +26,7 @@ function Game({ playerData, onPlayerUpdate }) {
   // MODAL STATE
   const [selectedItem, setSelectedItem] = useState(null);
   const [modalMode, setModalMode] = useState('VIEW'); // 'VIEW' or 'ACTION'
-  const [consumeQuantity, setConsumeQuantity] = useState(1); // NEW: Track quantity to use
+  const [consumeQuantity, setConsumeQuantity] = useState(1); // Track quantity to use
   
   // CHAT DRAFT STATE
   const [chatDraft, setChatDraft] = useState('');
@@ -67,7 +68,6 @@ function Game({ playerData, onPlayerUpdate }) {
     }
   };
 
-  // UPDATED: Accept quantity
   const handleUseItem = async (itemId, quantity = 1) => {
     if (actionLoading || !itemId) return;
     setActionLoading(true);
@@ -127,7 +127,10 @@ function Game({ playerData, onPlayerUpdate }) {
   const currentRealm = REALMS[playerData.realmIndex];
   const currentStage = currentRealm.stages[playerData.stageIndex];
   const realmDisplay = `${currentRealm.name} - ${currentStage}`;
-  const xpProgress = (playerData.experience / playerData.experienceNeeded) * 100;
+  
+  // Calculate XP Progress with clamping
+  const rawProgress = (playerData.experience / playerData.experienceNeeded) * 100;
+  const xpProgress = Math.min(100, Math.max(0, rawProgress));
 
   // LOGIC FOR MODAL BUTTONS
   const renderModalActions = () => {
@@ -337,6 +340,13 @@ function Game({ playerData, onPlayerUpdate }) {
               onItemClick={(item) => openItemModal(item, 'ACTION')} 
             />
           )}
+
+          {currentPage === 'techniques' && (
+             <TechniquesPage 
+               playerData={playerData} 
+               onPlayerUpdate={onPlayerUpdate}
+             />
+          )}
           
           {currentPage === 'profile' && (
              <ProfilePage 
@@ -347,7 +357,7 @@ function Game({ playerData, onPlayerUpdate }) {
              />
           )}
           
-          {currentPage === 'combat' && <CombatPage />}
+          {currentPage === 'combat' && <CombatPage playerData={playerData} />}
         </div>
       </div>
     </div>

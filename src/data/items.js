@@ -15,7 +15,7 @@ export const itemRegistry = {
     description: 'A practice sword carved from a sturdy branch.',
     type: ITEM_TYPES.WEAPON,
     slot: 'weapon',
-    icon: '/assets/icons/items/weapons/SODA_Icon_Weapons_Axe.png', // Placeholder
+    icon: '/assets/icons/items/weapons/SODA_Icons_ShortSword_19.png', // Placeholder
     stats: { strength: 5 },
     rarity: 'common'
   },

@@ -4,6 +4,7 @@ function Sidebar({ currentPage, onNavigate, onLogout, isOpen, onClose }) {
   const pages = [
     { id: 'meditation', label: 'Meditation', icon: ' ' },
     { id: 'combat', label: 'Combat', icon: ' ' },
+    { id: 'techniques', label: 'Techniques', icon: ' ' },
     { id: 'inventory', label: 'Inventory', icon: ' ' },
     { id: 'profile', label: 'Profile', icon: ' ' }
   ];

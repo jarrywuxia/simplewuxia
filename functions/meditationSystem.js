@@ -16,7 +16,12 @@ const meditationEvents = [
     message: 'Your breathing synchronizes with the rhythm of nature.',
     weight: 30,
     cooldown: 6,
-    rewards: { experience: { min: 8, max: 18 }, spiritStones: { min: 2, max: 5 } },
+    rewards: { 
+      experience: { min: 8, max: 18 }, 
+      spiritStones: { min: 2, max: 5 },
+      // 5% chance to find a low-grade spirit pill
+      loot: [{ id: 'spirit_pill_low', chance: 0.05 }] 
+    },
     requirements: { minRealmIndex: 0 }
   },
   {
@@ -24,7 +29,12 @@ const meditationEvents = [
     message: 'A minor insight flashes through your mind!',
     weight: 15,
     cooldown: 5,
-    rewards: { experience: { min: 20, max: 40 }, spiritStones: { min: 5, max: 10 } },
+    rewards: { 
+      experience: { min: 20, max: 40 }, 
+      spiritStones: { min: 5, max: 10 },
+      // 15% chance for a pill
+      loot: [{ id: 'spirit_pill_low', chance: 0.15 }]
+    },
     requirements: { minRealmIndex: 0 }
   },
   {
@@ -32,7 +42,12 @@ const meditationEvents = [
     message: 'The heavens tremble as you achieve a profound breakthrough!',
     weight: 2,
     cooldown: 7, 
-    rewards: { experience: { min: 100, max: 200 }, spiritStones: { min: 50, max: 100 } },
+    rewards: { 
+      experience: { min: 100, max: 200 }, 
+      spiritStones: { min: 50, max: 100 },
+      // High chance for a weapon if you achieve a major breakthrough
+      loot: [{ id: 'wooden_sword', chance: 0.5 }]
+    },
     requirements: { minRealmIndex: 1 }
   },
   {
@@ -40,7 +55,11 @@ const meditationEvents = [
     message: 'You glimpse the celestial dao and your understanding deepens.',
     weight: 10,
     cooldown: 7,
-    rewards: { experience: { min: 50, max: 100 }, spiritStones: { min: 20, max: 40 } },
+    rewards: { 
+      experience: { min: 50, max: 100 }, 
+      spiritStones: { min: 20, max: 40 },
+      loot: [{ id: 'spirit_pill_low', chance: 0.3 }]
+    },
     requirements: { minRealmIndex: 3 }
   },
   {
@@ -58,21 +77,34 @@ const deepMeditationEvents = [
     id: 'deep_cultivation',
     message: 'You dive deep into cultivation, absorbing vast amounts of spiritual energy.',
     weight: 40,
-    rewards: { experience: { min: 80, max: 150 }, spiritStones: { min: 20, max: 40 } },
+    rewards: { 
+      experience: { min: 80, max: 150 }, 
+      spiritStones: { min: 20, max: 40 },
+      loot: [{ id: 'spirit_pill_low', chance: 0.4 }]
+    },
     requirements: { minRealmIndex: 0 }
   },
   {
     id: 'deep_epiphany',
     message: 'An epiphany strikes! Your understanding of the dao grows significantly.',
     weight: 30,
-    rewards: { experience: { min: 120, max: 200 }, spiritStones: { min: 30, max: 60 } },
+    rewards: { 
+      experience: { min: 120, max: 200 }, 
+      spiritStones: { min: 30, max: 60 },
+      loot: [{ id: 'spirit_pill_low', chance: 0.6 }]
+    },
     requirements: { minRealmIndex: 0 }
   },
   {
     id: 'deep_breakthrough',
     message: 'Your concentrated effort yields a breakthrough in your cultivation!',
     weight: 10,
-    rewards: { experience: { min: 200, max: 350 }, spiritStones: { min: 80, max: 150 } },
+    rewards: { 
+      experience: { min: 200, max: 350 }, 
+      spiritStones: { min: 80, max: 150 },
+      // Guaranteed item on deep breakthrough
+      loot: [{ id: 'wooden_sword', chance: 1.0 }]
+    },
     requirements: { minRealmIndex: 1 }
   }
 ];
@@ -82,12 +114,8 @@ const deepMeditationEvents = [
 const selectRandomEvent = (eventList, playerData) => {
   const availableEvents = eventList.filter(event => {
     if (event.enabled === false) return false;
-    // Handle case where realmIndex might be undefined in DB
     const playerRealm = playerData.realmIndex || 0;
-    
-    if (event.requirements.minRealmIndex > playerRealm) {
-      return false;
-    }
+    if (event.requirements.minRealmIndex > playerRealm) return false;
     return true;
   });
   
@@ -96,40 +124,39 @@ const selectRandomEvent = (eventList, playerData) => {
   
   for (const event of availableEvents) {
     random -= event.weight;
-    if (random <= 0) {
-      return event;
-    }
+    if (random <= 0) return event;
   }
-  
-  // Fallback
   return availableEvents[0];
 };
 
 const calculateRewards = (event, playerData) => {
-  const rewards = {
-    experience: 0,
-    spiritStones: 0
-  };
-  
+  const rewards = { experience: 0, spiritStones: 0 };
   const realmMultiplier = (playerData.realmIndex || 0) + 1;
   
   if (event.rewards.experience) {
-    const baseXP = Math.floor(
-      Math.random() * (event.rewards.experience.max - event.rewards.experience.min + 1) 
-      + event.rewards.experience.min
-    );
+    const baseXP = Math.floor(Math.random() * (event.rewards.experience.max - event.rewards.experience.min + 1) + event.rewards.experience.min);
     rewards.experience = baseXP * realmMultiplier;
   }
   
   if (event.rewards.spiritStones) {
-    const baseStones = Math.floor(
-      Math.random() * (event.rewards.spiritStones.max - event.rewards.spiritStones.min + 1) 
-      + event.rewards.spiritStones.min
-    );
+    const baseStones = Math.floor(Math.random() * (event.rewards.spiritStones.max - event.rewards.spiritStones.min + 1) + event.rewards.spiritStones.min);
     rewards.spiritStones = baseStones * realmMultiplier;
   }
   
   return rewards;
+};
+
+// NEW: Helper to roll for loot drops
+const calculateLoot = (event) => {
+  if (!event.rewards.loot) return null;
+  
+  // Look through the list of possible items for this event
+  for (const itemEntry of event.rewards.loot) {
+    if (Math.random() < itemEntry.chance) {
+      return itemEntry.id; // Return the ID of the item found
+    }
+  }
+  return null;
 };
 
 // --- 3. EXPORTS (Public Functions) ---
@@ -137,23 +164,26 @@ const calculateRewards = (event, playerData) => {
 exports.generateQuickMeditationReward = (playerData) => {
   const event = selectRandomEvent(meditationEvents, playerData);
   const rewards = calculateRewards(event, playerData);
+  const lootId = calculateLoot(event);
   
   return {
     ...rewards,
     message: event.message,
     eventId: event.id,
-    cooldown: event.cooldown // This is important!
+    cooldown: event.cooldown,
+    item: lootId // Include the item ID if one was found
   };
 };
 
 exports.generateDeepMeditationReward = (playerData) => {
   const event = selectRandomEvent(deepMeditationEvents, playerData);
   const rewards = calculateRewards(event, playerData);
+  const lootId = calculateLoot(event);
   
   return {
     ...rewards,
     message: event.message,
-    eventId: event.id
-    // Deep meditation usually doesn't set a cooldown, but you can add one if needed
+    eventId: event.id,
+    item: lootId // Include the item ID if one was found
   };
 };

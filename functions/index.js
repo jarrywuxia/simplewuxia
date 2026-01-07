@@ -8,7 +8,6 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // --- GAME CONSTANTS ---
-// Keep this list here for the Level Up logic
 const REALMS = [
   { name: 'Spirit Gathering', stages: ['Early', 'Intermediate', 'Late', 'Peak'] },
   { name: 'Body Refinement', stages: ['Early', 'Intermediate', 'Late', 'Peak'] },
@@ -25,7 +24,6 @@ const STAT_POINTS_PER_STAGE = 5;
 const DEEP_MEDITATION_COST = 20;
 
 exports.meditate = onCall(async (request) => {
-    // 1. Auth Check
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'You must be logged in.');
     }
@@ -34,9 +32,6 @@ exports.meditate = onCall(async (request) => {
     const type = request.data.type || 'quick'; 
     const playerRef = db.collection('players').doc(uid);
 
-    console.log(`Player ${uid} attempting meditation: ${type}`);
-
-    // 2. Run Transaction
     return await db.runTransaction(async (transaction) => {
         const playerDoc = await transaction.get(playerRef);
         
@@ -47,14 +42,12 @@ exports.meditate = onCall(async (request) => {
         const data = playerDoc.data();
         const now = Date.now();
 
-        // 3. Validation (Cooldown & Energy)
+        // 1. Validation (Cooldown & Energy)
         if (type === 'quick') {
             const lastTime = data.lastMeditationTime || 0;
-            // IMPORTANT: Get the cooldown from the DB. 
-            // If it's missing (first time), default to 5 seconds.
             const cooldown = (data.lastCooldownDuration || 5) * 1000; 
             
-            if (now - lastTime < cooldown - 500) { // 500ms buffer
+            if (now - lastTime < cooldown - 500) {
                 throw new HttpsError('failed-precondition', 'Meditation is on cooldown.');
             }
         } else if (type === 'deep') {
@@ -63,7 +56,7 @@ exports.meditate = onCall(async (request) => {
             }
         }
 
-        // 4. GENERATE REWARDS (Using the new file)
+        // 2. Generate Rewards
         let result;
         if (type === 'quick') {
             result = generateQuickMeditationReward(data);
@@ -71,7 +64,25 @@ exports.meditate = onCall(async (request) => {
             result = generateDeepMeditationReward(data);
         }
 
-        // 5. Apply Stats
+        // 3. Process Inventory (Stacking Logic)
+        let newInventory = data.inventory || [];
+        if (result.item) {
+            // Check if item already exists in inventory
+            const itemIndex = newInventory.findIndex(item => item.id === result.item);
+            
+            if (itemIndex > -1) {
+                // Stack it
+                newInventory[itemIndex].quantity += 1;
+            } else {
+                // Add new slot
+                newInventory.push({
+                    id: result.item,
+                    quantity: 1
+                });
+            }
+        }
+
+        // 4. Calculate Stats & Leveling
         let newXp = (data.experience || 0) + result.experience;
         let newStones = (data.spiritStones || 0) + result.spiritStones;
         let newEnergy = data.energy;
@@ -85,30 +96,25 @@ exports.meditate = onCall(async (request) => {
             newEnergy -= DEEP_MEDITATION_COST;
         }
 
-        // 6. Check Level Up
         if (newXp >= newXpNeeded) {
             const currentRealm = REALMS[newRealmIndex];
-            
-            if (currentRealm) { // Safety check
+            if (currentRealm) {
                 if (newStageIndex + 1 < currentRealm.stages.length) {
-                    // Stage Up
                     newStageIndex++;
                     newXp -= newXpNeeded;
                     extraMessage = ` Advanced to ${currentRealm.stages[newStageIndex]}!`;
                 } else if (newRealmIndex + 1 < REALMS.length) {
-                    // Realm Up
                     newRealmIndex++;
                     newStageIndex = 0;
                     newXp -= newXpNeeded;
                     newXpNeeded = XP_PER_STAGE * (newRealmIndex + 1);
                     extraMessage = ` BREAKTHROUGH to ${REALMS[newRealmIndex].name}!`;
-                    newPoints += STAT_POINTS_PER_STAGE; // Bonus for Realm up?
                 }
                 newPoints += STAT_POINTS_PER_STAGE;
             }
         }
 
-        // 7. Save to Database
+        // 5. Update Database
         transaction.update(playerRef, {
             experience: newXp,
             spiritStones: newStones,
@@ -117,20 +123,57 @@ exports.meditate = onCall(async (request) => {
             stageIndex: newStageIndex,
             unallocatedPoints: newPoints,
             experienceNeeded: newXpNeeded,
+            inventory: newInventory, // Save the updated bag
             lastMeditationTime: type === 'quick' ? now : data.lastMeditationTime,
-            // Save the cooldown from the event so the frontend knows how long to wait next time
             lastCooldownDuration: result.cooldown || 5 
         });
 
-        // 8. Reply to Client
+        // 6. Return Data to Frontend
         return {
             success: true,
             rewards: {
                 experience: result.experience,
-                spiritStones: result.spiritStones
+                spiritStones: result.spiritStones,
+                item: result.item // Pass the ID back so UI can show the loot
             },
             message: result.message + extraMessage,
             cooldown: result.cooldown || 0
         };
+    });
+});
+
+exports.allocateStat = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
+
+    const { statName } = request.data; 
+    const uid = request.auth.uid;
+    const playerRef = db.collection('players').doc(uid);
+
+    const allowedStats = ['strength', 'defense', 'qiPower', 'maxHp'];
+    if (!allowedStats.includes(statName)) {
+        throw new HttpsError('invalid-argument', 'Invalid stat name.');
+    }
+
+    return await db.runTransaction(async (transaction) => {
+        const playerDoc = await transaction.get(playerRef);
+        if (!playerDoc.exists) throw new HttpsError('not-found', 'No player.');
+
+        const data = playerDoc.data();
+        if (data.unallocatedPoints <= 0) {
+            throw new HttpsError('failed-precondition', 'No points available.');
+        }
+
+        const currentStatValue = data.stats[statName] || 0;
+        const updateData = {
+            unallocatedPoints: data.unallocatedPoints - 1,
+            [`stats.${statName}`]: currentStatValue + 1
+        };
+
+        if (statName === 'maxHp') {
+            updateData[`stats.${statName}`] = currentStatValue + 20;
+        }
+
+        transaction.update(playerRef, updateData);
+        return { success: true, newStatValue: currentStatValue + 1 };
     });
 });

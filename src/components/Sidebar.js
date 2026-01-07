@@ -17,44 +17,46 @@ function Sidebar({ currentPage, onNavigate, onLogout, isOpen, onClose }) {
         w-64
       `}
     >
-      <div className="p-4">
-        {/* Close button inside sidebar */}
-        <div className="flex justify-between items-center mb-6 pb-4 border-b-2 border-border">
-          <h2 className="text-2xl font-bold text-ink font-serif">Menu</h2>
+      <div className="flex flex-col h-full">
+        {/* Header - matches chat header */}
+        <div className="p-4 flex justify-between items-center border-b-2 border-border bg-white h-14 flex-shrink-0">
+          <h2 className="text-xl font-bold text-ink font-serif uppercase tracking-widest">Menu</h2>
           <button
             onClick={onClose}
-            className="text-ink hover:text-accent text-2xl w-8 h-8 flex items-center justify-center transition-colors"
+            className="text-ink text-xl"
             aria-label="Close menu"
           >
             ✕
           </button>
         </div>
 
-        <nav className="space-y-3">
+        {/* Navigation Area - matches chat message area */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-stone-50">
           {pages.map(page => (
             <button
               key={page.id}
               onClick={() => onNavigate(page.id)}
               className={`
-                w-full text-left px-4 py-3 border transition-all duration-200
+                w-full text-left px-4 py-3 border transition-all duration-200 shadow-sm
                 ${currentPage === page.id
-                  ? 'bg-accent border-accent text-white font-semibold shadow-md'
-                  : 'bg-white border-border text-ink hover:border-accent hover:text-accent'
+                  ? 'bg-accent border-accent text-white font-bold'
+                  : 'bg-white border-border text-ink hover:border-accent hover:bg-white'
                 }
               `}
             >
               <span className="mr-3">{page.icon}</span>
-              {page.label}
+              <span className={currentPage === page.id ? '' : 'font-semibold'}>{page.label}</span>
             </button>
           ))}
-        </nav>
+        </div>
 
-        <div className="mt-8 pt-4 border-t border-border">
+        {/* Logout Button - matches chat input area */}
+        <div className="p-4 bg-white border-t-2 border-border flex-shrink-0">
           <button
             onClick={onLogout}
-            className="w-full bg-white hover:bg-gray-50 text-ink px-4 py-2 border border-border hover:border-accent transition-colors text-sm font-semibold"
+            className="w-full bg-accent text-white py-2 text-xs font-bold hover:bg-accent-light transition-colors shadow-sm uppercase tracking-widest"
           >
-            Logout
+            Exit Realm
           </button>
         </div>
       </div>

@@ -49,7 +49,13 @@ function ItemModal({ item, onClose, actions }) {
           </div>
 
           <div className="flex flex-col gap-2">
-            {actions && actions}
+            {/* 
+               CRITICAL FIX: 
+               Only render actions if they are explicitly passed.
+               No fallback logic. If `actions` is null, no extra buttons appear.
+            */}
+            {actions}
+
             <button onClick={onClose} className="w-full py-2 text-xs font-bold text-ink-light hover:text-ink transition-colors uppercase tracking-widest">
               Close
             </button>

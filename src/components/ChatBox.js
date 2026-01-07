@@ -1,11 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { rtdb } from '../firebase';
 import { ref, push, query, limitToLast, onValue, serverTimestamp } from 'firebase/database';
+import { getItem } from '../data/items'; // Import to look up item names and icons
 
-function ChatBox({ playerData }) {
+function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const chatEndRef = useRef(null);
+
+  // If Game.js sends a draft (e.g. from linking an item), set it here
+  useEffect(() => {
+    if (draftMessage) {
+      setNewMessage((prev) => (prev ? prev + ' ' : '') + draftMessage);
+      if (onDraftConsumed) onDraftConsumed(); // Clear the draft in parent
+    }
+  }, [draftMessage, onDraftConsumed]);
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -43,6 +52,49 @@ function ChatBox({ playerData }) {
     setNewMessage('');
   };
 
+  // --- PARSE MESSAGE FOR ITEM LINKS ---
+  const renderMessageContent = (text) => {
+    if (!text) return null;
+    
+    // Regex to find [item:some_id]
+    const parts = text.split(/(\[item:[a-zA-Z0-9_]+\])/g);
+    
+    return parts.map((part, i) => {
+      const match = part.match(/\[item:([a-zA-Z0-9_]+)\]/);
+      if (match) {
+        const itemId = match[1];
+        const itemDef = getItem(itemId);
+        
+        // Handle invalid IDs
+        if (!itemDef) {
+           return <span key={i} className="text-gray-400 text-xs">[Unknown Item]</span>;
+        }
+
+        return (
+          <button
+            key={i}
+            onClick={() => onViewItem && onViewItem(itemDef)}
+            // Changed styling to inline-flex to align icon and text
+            className="inline-flex items-center gap-1.5 text-amber-700 font-bold hover:text-amber-900 cursor-pointer bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 text-xs mx-1 align-text-bottom transition-colors shadow-sm"
+            title="Click to view details"
+          >
+            {/* RENDER ICON IF EXISTS */}
+            {itemDef.icon && (
+              <img 
+                src={itemDef.icon} 
+                alt="" 
+                className="w-3.5 h-3.5 object-contain"
+                style={{ imageRendering: 'pixelated' }}
+              />
+            )}
+            <span>[{itemDef.name}]</span>
+          </button>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
   return (
     <div className="flex flex-col h-full bg-stone-50">
       {/* Message List */}
@@ -57,15 +109,15 @@ function ChatBox({ playerData }) {
                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </span>
             </div>
-            <p className="text-ink break-words leading-snug bg-white p-2 border border-border shadow-sm">
-              {msg.text}
-            </p>
+            <div className="text-ink break-words leading-snug bg-white p-2 border border-border shadow-sm">
+              {renderMessageContent(msg.text)}
+            </div>
           </div>
         ))}
         <div ref={chatEndRef} />
       </div>
 
-      {/* Input Area - Stacked Vertically */}
+      {/* Input Area */}
       <form onSubmit={handleSendMessage} className="p-4 bg-white border-t-2 border-border flex flex-col gap-2">
         <input
           type="text"

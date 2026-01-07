@@ -227,3 +227,110 @@ exports.useItem = onCall(async (request) => {
         return { success: true, message: `Consumed ${itemDef.name}` };
     });
 });
+
+const addToInventory = (inventory, itemId, quantity = 1) => {
+    const existingIndex = inventory.findIndex(i => i.id === itemId);
+    if (existingIndex > -1) {
+        inventory[existingIndex].quantity += quantity;
+    } else {
+        inventory.push({ id: itemId, quantity });
+    }
+    return inventory;
+};
+
+exports.equipItem = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
+    
+    const { itemId } = request.data;
+    const uid = request.auth.uid;
+    const playerRef = db.collection('players').doc(uid);
+
+    return await db.runTransaction(async (transaction) => {
+        const playerDoc = await transaction.get(playerRef);
+        if (!playerDoc.exists) throw new HttpsError('not-found', 'Player not found.');
+
+        const data = playerDoc.data();
+        const itemDef = MASTER_ITEMS[itemId];
+
+        // 1. Validate Item
+        if (!itemDef || itemDef.type !== 'equipment') {
+            throw new HttpsError('invalid-argument', 'Not an equippable item.');
+        }
+
+        // 2. Check Ownership
+        let inventory = [...(data.inventory || [])];
+        const itemIndex = inventory.findIndex(i => i.id === itemId);
+        
+        if (itemIndex === -1 || inventory[itemIndex].quantity <= 0) {
+            throw new HttpsError('failed-precondition', 'You do not own this item.');
+        }
+
+        // 3. Handle The Swap
+        const targetSlot = itemDef.slot; // e.g., 'weapon', 'armor'
+        let equipment = { ...(data.equipment || {}) };
+        const currentlyEquippedId = equipment[targetSlot];
+
+        // Remove 1 of the new item from inventory
+        if (inventory[itemIndex].quantity > 1) {
+            inventory[itemIndex].quantity -= 1;
+        } else {
+            inventory.splice(itemIndex, 1);
+        }
+
+        // If something was equipped, put it back in inventory
+        if (currentlyEquippedId) {
+            addToInventory(inventory, currentlyEquippedId, 1);
+        }
+
+        // Equip the new item
+        equipment[targetSlot] = itemId;
+
+        // 4. Update DB
+        transaction.update(playerRef, {
+            inventory: inventory,
+            equipment: equipment
+        });
+
+        return { 
+            success: true, 
+            message: `Equipped ${itemDef.name}`,
+            equippedId: itemId,
+            unequippedId: currentlyEquippedId || null
+        };
+    });
+});
+
+exports.unequipItem = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
+    
+    const { slot } = request.data; // e.g., 'weapon'
+    const uid = request.auth.uid;
+    const playerRef = db.collection('players').doc(uid);
+
+    return await db.runTransaction(async (transaction) => {
+        const playerDoc = await transaction.get(playerRef);
+        const data = playerDoc.data();
+        
+        let equipment = { ...(data.equipment || {}) };
+        const itemId = equipment[slot];
+
+        if (!itemId) {
+            throw new HttpsError('failed-precondition', 'Nothing equipped in that slot.');
+        }
+
+        let inventory = [...(data.inventory || [])];
+        
+        // Move item to inventory
+        addToInventory(inventory, itemId, 1);
+        
+        // Clear slot
+        equipment[slot] = null;
+
+        transaction.update(playerRef, {
+            inventory: inventory,
+            equipment: equipment
+        });
+
+        return { success: true, message: 'Item unequipped.' };
+    });
+});

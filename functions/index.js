@@ -185,7 +185,14 @@ const MASTER_ITEMS = require('./masterItems');
 exports.useItem = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
 
-    const { itemId } = request.data;
+    // 1. Accept quantity, default to 1
+    const { itemId, quantity } = request.data; 
+    const qtyToUse = parseInt(quantity) || 1;
+
+    if (qtyToUse < 1) {
+        throw new HttpsError('invalid-argument', 'Quantity must be at least 1.');
+    }
+
     const uid = request.auth.uid;
     const playerRef = db.collection('players').doc(uid);
 
@@ -195,36 +202,43 @@ exports.useItem = onCall(async (request) => {
 
         const data = playerDoc.data();
         
-        // 1. Validate the Item exists in the Master List
+        // 2. Validate Item
         const itemDef = MASTER_ITEMS[itemId];
         if (!itemDef || itemDef.type !== 'consumable') {
             throw new HttpsError('invalid-argument', 'This item cannot be consumed.');
         }
 
-        // 2. Check if the player actually has it
+        // 3. Check Ownership & Quantity
         let inventory = data.inventory || [];
         const itemIndex = inventory.findIndex(i => i.id === itemId);
-        if (itemIndex === -1 || inventory[itemIndex].quantity <= 0) {
-            throw new HttpsError('failed-precondition', 'You do not have this item.');
+        
+        if (itemIndex === -1 || inventory[itemIndex].quantity < qtyToUse) {
+            throw new HttpsError('failed-precondition', 'Not enough items.');
         }
 
-        // 3. Apply the Effect
+        // 4. Apply the Effect (Multiplied by qtyToUse)
         let updateData = {};
         if (itemDef.effect.type === 'restore_energy') {
             const maxEnergy = 100;
-            updateData.energy = Math.min(maxEnergy, (data.energy || 0) + itemDef.effect.value);
+            const energyGain = itemDef.effect.value * qtyToUse;
+            updateData.energy = Math.min(maxEnergy, (data.energy || 0) + energyGain);
         }
 
-        // 4. Update Inventory (Stacking logic)
-        if (inventory[itemIndex].quantity > 1) {
-            inventory[itemIndex].quantity -= 1;
+        // 5. Update Inventory
+        if (inventory[itemIndex].quantity > qtyToUse) {
+            inventory[itemIndex].quantity -= qtyToUse;
         } else {
+            // Remove the item entirely if using all (or somehow more)
             inventory.splice(itemIndex, 1);
         }
         updateData.inventory = inventory;
 
         transaction.update(playerRef, updateData);
-        return { success: true, message: `Consumed ${itemDef.name}` };
+        
+        return { 
+            success: true, 
+            message: `Consumed ${qtyToUse}x ${itemDef.name}` 
+        };
     });
 });
 

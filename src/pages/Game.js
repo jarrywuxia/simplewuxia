@@ -1,9 +1,9 @@
+// src/pages/Game.js
 import React, { useState } from 'react';
 import { signOut } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../firebase';
 import { REALMS } from '../gameData';
-import { getItem } from '../data/items';
 
 // COMPONENTS
 import Sidebar from '../components/Sidebar';
@@ -25,6 +25,7 @@ function Game({ playerData, onPlayerUpdate }) {
   // MODAL STATE
   const [selectedItem, setSelectedItem] = useState(null);
   const [modalMode, setModalMode] = useState('VIEW'); // 'VIEW' or 'ACTION'
+  const [consumeQuantity, setConsumeQuantity] = useState(1); // NEW: Track quantity to use
   
   // CHAT DRAFT STATE
   const [chatDraft, setChatDraft] = useState('');
@@ -48,6 +49,7 @@ function Game({ playerData, onPlayerUpdate }) {
   const openItemModal = (item, mode) => {
     setSelectedItem(item);
     setModalMode(mode); 
+    setConsumeQuantity(1); // Reset quantity selector when opening
   };
 
   // --- API ACTIONS ---
@@ -65,12 +67,14 @@ function Game({ playerData, onPlayerUpdate }) {
     }
   };
 
-  const handleUseItem = async (itemId) => {
+  // UPDATED: Accept quantity
+  const handleUseItem = async (itemId, quantity = 1) => {
     if (actionLoading || !itemId) return;
     setActionLoading(true);
     try {
       const consumeItem = httpsCallable(functions, 'useItem'); 
-      const result = await consumeItem({ itemId });
+      // Send quantity to backend
+      const result = await consumeItem({ itemId, quantity });
       console.log(result.data.message); 
       setSelectedItem(null); 
       await onPlayerUpdate(); 
@@ -137,16 +141,54 @@ function Game({ playerData, onPlayerUpdate }) {
 
     return (
       <div className="flex flex-col gap-2">
+        {/* CONSUMABLE LOGIC WITH QUANTITY SLIDER */}
         {selectedItem?.type === 'consumable' && count > 0 && (
-          <button 
-            disabled={actionLoading}
-            onClick={() => handleUseItem(selectedItem.id)}
-            className="btn-primary w-full py-2 uppercase tracking-widest text-xs disabled:opacity-50"
-          >
-            {actionLoading ? 'Consuming...' : 'Consume Item'}
-          </button>
+          <div className="bg-stone-50 p-3 border border-border mb-2 rounded shadow-inner">
+             <div className="flex justify-between items-center mb-2">
+                <span className="text-[10px] font-bold text-ink-light uppercase tracking-widest">Quantity</span>
+                <span className="text-xs font-mono font-bold text-ink">{consumeQuantity} / {count}</span>
+            </div>
+
+            {/* Quantity Controls */}
+            <div className="flex items-center gap-2 mb-3">
+                <button 
+                  onClick={() => setConsumeQuantity(Math.max(1, consumeQuantity - 1))}
+                  className="w-8 h-8 bg-white border border-border hover:bg-gray-100 font-bold text-ink shadow-sm"
+                >-</button>
+                
+                <input 
+                  type="range" 
+                  min="1" 
+                  max={count} 
+                  value={consumeQuantity} 
+                  onChange={(e) => setConsumeQuantity(parseInt(e.target.value))}
+                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-accent"
+                />
+                
+                <button 
+                  onClick={() => setConsumeQuantity(Math.min(count, consumeQuantity + 1))}
+                  className="w-8 h-8 bg-white border border-border hover:bg-gray-100 font-bold text-ink shadow-sm"
+                >+</button>
+                
+                <button 
+                    onClick={() => setConsumeQuantity(count)}
+                    className="text-[10px] uppercase font-bold text-accent hover:text-accent-light hover:underline ml-1"
+                >
+                    Max
+                </button>
+            </div>
+
+            <button 
+              disabled={actionLoading}
+              onClick={() => handleUseItem(selectedItem.id, consumeQuantity)}
+              className="btn-primary w-full py-2 uppercase tracking-widest text-xs disabled:opacity-50"
+            >
+              {actionLoading ? 'Consuming...' : `Consume (${consumeQuantity})`}
+            </button>
+          </div>
         )}
         
+        {/* EQUIPMENT LOGIC */}
         {(selectedItem?.type === 'weapon' || selectedItem?.type === 'armor') && (
           <>
             {equipped ? (

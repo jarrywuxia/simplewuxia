@@ -47,12 +47,17 @@ function CharacterCreation({ user, onCharacterCreated }) {
     } catch (err) {
       console.error("Creation Error:", err);
       
+      const msg = err.message || '';
+
       // Map server errors to user-friendly messages
-      if (err.message.includes('taken')) {
+      if (msg.includes('taken')) {
         setError('This name is already taken.');
-      } else if (err.message.includes('already exists')) {
+      } else if (msg.includes('already exists')) {
         setError('You already have a character.');
-      } else if (err.message.includes('Invalid characters')) {
+      } else if (msg.includes('cannot be used')) {
+        // Catches profanity or reserved words (admin, system, etc.)
+        setError('This name is not allowed.');
+      } else if (msg.includes('Invalid characters')) {
         setError('Invalid characters in name.');
       } else {
         setError('Failed to create character. Please try again.');
@@ -104,8 +109,8 @@ function CharacterCreation({ user, onCharacterCreated }) {
 
             {/* Error Message */}
             {error && (
-              <div className="border-l-2 border-red-500 pl-3 py-2 bg-red-50">
-                <p className="text-red-700 text-sm">{error}</p>
+              <div className="border-l-2 border-red-500 pl-3 py-2 bg-red-50 animate-fadeIn">
+                <p className="text-red-700 text-sm font-bold">{error}</p>
               </div>
             )}
 
@@ -121,7 +126,7 @@ function CharacterCreation({ user, onCharacterCreated }) {
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full"
+              className={`btn-primary w-full ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {loading ? 'Creating Character...' : 'Begin Cultivation'}
             </button>

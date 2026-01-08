@@ -1,20 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { rtdb, functions } from '../firebase'; // Import functions
-import { httpsCallable } from 'firebase/functions'; // Import callable
-import { ref, query, limitToLast, onValue } from 'firebase/database'; // Removed 'push' and 'serverTimestamp'
+import { rtdb, functions } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
+import { ref, query, limitToLast, onValue } from 'firebase/database';
 import { getItem } from '../data/items';
 
 function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-  const [sending, setSending] = useState(false); // Add loading state for send
+  const [sending, setSending] = useState(false);
+  
+  // NEW: State for visual cooldown and inline errors
+  const [cooldown, setCooldown] = useState(0); 
+  const [errorMsg, setErrorMsg] = useState('');
+
   const chatEndRef = useRef(null);
 
-  // If Game.js sends a draft (e.g. from linking an item), set it here
   useEffect(() => {
     if (draftMessage) {
       setNewMessage((prev) => (prev ? prev + ' ' : '') + draftMessage);
-      if (onDraftConsumed) onDraftConsumed(); // Clear the draft in parent
+      if (onDraftConsumed) onDraftConsumed();
     }
   }, [draftMessage, onDraftConsumed]);
 
@@ -22,7 +26,7 @@ function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // 1. LISTEN TO MESSAGES (Read-Only access is still fine)
+  // 1. LISTEN TO MESSAGES
   useEffect(() => {
     const chatRef = query(ref(rtdb, 'globalChat'), limitToLast(50));
     const unsubscribe = onValue(chatRef, (snapshot) => {
@@ -39,35 +43,51 @@ function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
     return () => unsubscribe();
   }, []);
 
-  // 2. SEND MESSAGE SECURELY VIA CLOUD FUNCTION
+  // NEW: Handle the countdown timer
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [cooldown]);
+
+  // 2. SEND MESSAGE
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim() || sending) return;
+    setErrorMsg(''); // Clear previous errors
+
+    // Block if empty, currently sending, or on cooldown
+    if (!newMessage.trim() || sending || cooldown > 0) return;
 
     setSending(true);
 
     try {
       const sendChatFn = httpsCallable(functions, 'sendChatMessage');
       
-      // We only send the text. The server figures out the Name, Realm, and Timestamp.
       await sendChatFn({ 
         text: newMessage.trim() 
       });
 
       setNewMessage('');
+      setCooldown(3); // Start 3 second client-side cooldown
+      
     } catch (error) {
       console.error("Failed to send message:", error);
-      alert("Failed to send message. Please try again.");
+      
+      // Handle the specific "Rate Limit" error from Cloud Functions
+      if (error.code === 'resource-exhausted' || error.message.includes('too fast')) {
+        setErrorMsg("You are chatting too fast.");
+        setCooldown(2); // Force cooldown UI if they hit the server limit
+      } else {
+        setErrorMsg("Failed to send.");
+      }
     } finally {
       setSending(false);
     }
   };
 
-  // --- PARSE MESSAGE FOR ITEM LINKS ---
   const renderMessageContent = (text) => {
     if (!text) return null;
-    
-    // Regex to find [item:some_id]
     const parts = text.split(/(\[item:[a-zA-Z0-9_]+\])/g);
     
     return parts.map((part, i) => {
@@ -76,7 +96,6 @@ function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
         const itemId = match[1];
         const itemDef = getItem(itemId);
         
-        // Handle invalid IDs
         if (!itemDef) {
            return <span key={i} className="text-gray-400 text-xs">[Unknown Item]</span>;
         }
@@ -137,12 +156,26 @@ function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
           maxLength={150}
           disabled={sending}
         />
+        
+        {/* NEW: Error Message Display */}
+        {errorMsg && (
+          <div className="text-[10px] text-red-600 font-bold animate-pulse">
+            ! {errorMsg}
+          </div>
+        )}
+
         <button 
           type="submit" 
-          disabled={sending}
-          className="w-full bg-accent text-white py-2 text-xs font-bold hover:bg-accent-light transition-colors shadow-sm uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={sending || cooldown > 0} // Disable if sending OR cooling down
+          className={`
+            w-full py-2 text-xs font-bold transition-colors shadow-sm uppercase tracking-widest
+            ${cooldown > 0 
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed border border-gray-300' 
+              : 'bg-accent text-white hover:bg-accent-light cursor-pointer'
+            }
+          `}
         >
-          {sending ? 'Transmitting...' : 'Send to World'}
+          {sending ? 'Transmitting...' : cooldown > 0 ? `Wait ${cooldown}s` : 'Send to World'}
         </button>
       </form>
     </div>

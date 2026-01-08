@@ -494,3 +494,36 @@ exports.createCharacter = onCall(async (request) => {
         return { success: true };
     });
 });
+
+// 1. Add this to the TOP of functions/index.js
+const { getDatabase } = require('firebase-admin/database');
+
+// 2. Add this to the BOTTOM of functions/index.js
+exports.sendChatMessage = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
+    
+    const text = request.data.text;
+    // Basic validation
+    if (!text || typeof text !== 'string' || text.length > 150) {
+        throw new HttpsError('invalid-argument', 'Invalid message.');
+    }
+
+    const uid = request.auth.uid;
+    
+    // FETCH REAL NAME FROM DB (The Security Fix)
+    const playerSnap = await db.collection('players').doc(uid).get();
+    if (!playerSnap.exists) throw new HttpsError('not-found', 'No character.');
+    const playerData = playerSnap.data();
+
+    // Write to Realtime Database
+    const rtdb = getDatabase();
+    await rtdb.ref('globalChat').push({
+        text: text,
+        senderName: playerData.displayName, // We use the DB name, not user input
+        senderRealm: playerData.realmIndex,
+        userId: uid,
+        timestamp: Date.now()
+    });
+
+    return { success: true };
+});

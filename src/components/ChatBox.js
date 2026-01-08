@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { rtdb } from '../firebase';
-import { ref, push, query, limitToLast, onValue, serverTimestamp } from 'firebase/database';
-import { getItem } from '../data/items'; // Import to look up item names and icons
+import { rtdb, functions } from '../firebase'; // Import functions
+import { httpsCallable } from 'firebase/functions'; // Import callable
+import { ref, query, limitToLast, onValue } from 'firebase/database'; // Removed 'push' and 'serverTimestamp'
+import { getItem } from '../data/items';
 
 function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  const [sending, setSending] = useState(false); // Add loading state for send
   const chatEndRef = useRef(null);
 
   // If Game.js sends a draft (e.g. from linking an item), set it here
@@ -20,6 +22,7 @@ function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // 1. LISTEN TO MESSAGES (Read-Only access is still fine)
   useEffect(() => {
     const chatRef = query(ref(rtdb, 'globalChat'), limitToLast(50));
     const unsubscribe = onValue(chatRef, (snapshot) => {
@@ -36,20 +39,28 @@ function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
     return () => unsubscribe();
   }, []);
 
+  // 2. SEND MESSAGE SECURELY VIA CLOUD FUNCTION
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || sending) return;
 
-    const chatRef = ref(rtdb, 'globalChat');
-    await push(chatRef, {
-      text: newMessage.trim(),
-      senderName: playerData.displayName,
-      senderRealm: playerData.realmIndex,
-      timestamp: serverTimestamp(),
-      userId: playerData.userId
-    });
+    setSending(true);
 
-    setNewMessage('');
+    try {
+      const sendChatFn = httpsCallable(functions, 'sendChatMessage');
+      
+      // We only send the text. The server figures out the Name, Realm, and Timestamp.
+      await sendChatFn({ 
+        text: newMessage.trim() 
+      });
+
+      setNewMessage('');
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      alert("Failed to send message. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   // --- PARSE MESSAGE FOR ITEM LINKS ---
@@ -74,11 +85,9 @@ function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
           <button
             key={i}
             onClick={() => onViewItem && onViewItem(itemDef)}
-            // Changed styling to inline-flex to align icon and text
             className="inline-flex items-center gap-1.5 text-amber-700 font-bold hover:text-amber-900 cursor-pointer bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 text-xs mx-1 align-text-bottom transition-colors shadow-sm"
             title="Click to view details"
           >
-            {/* RENDER ICON IF EXISTS */}
             {itemDef.icon && (
               <img 
                 src={itemDef.icon} 
@@ -124,14 +133,16 @@ function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           placeholder="Transmit message..."
-          className="w-full bg-paper border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"
+          className="w-full bg-paper border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent disabled:opacity-50"
           maxLength={150}
+          disabled={sending}
         />
         <button 
           type="submit" 
-          className="w-full bg-accent text-white py-2 text-xs font-bold hover:bg-accent-light transition-colors shadow-sm uppercase tracking-widest"
+          disabled={sending}
+          className="w-full bg-accent text-white py-2 text-xs font-bold hover:bg-accent-light transition-colors shadow-sm uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Send to World
+          {sending ? 'Transmitting...' : 'Send to World'}
         </button>
       </form>
     </div>

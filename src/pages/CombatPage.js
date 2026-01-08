@@ -117,7 +117,7 @@ const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, acti
       <div className="w-full space-y-2">
         {/* HP BAR */}
         <div className="relative h-4 bg-gray-200 w-full rounded-sm overflow-hidden border border-gray-300 shadow-inner">
-            <div className={`absolute top-0 left-0 h-full transition-all duration-300 ease-out ${type === 'player' ? 'bg-red-600' : 'bg-red-800'}`}
+            <div className={`absolute top-0 left-0 h-full transition-all duration-300 ease-out ${type === 'player' ? 'bg-red-700' : 'bg-red-700'}`}
                 style={{ width: `${getPct(stats.hp, maxStats.hp)}%` }} />
             {shield > 0 && (
                 <div className="absolute top-0 left-0 h-full border-r border-white bg-cyan-400/50 z-10 transition-all duration-300"
@@ -130,7 +130,7 @@ const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, acti
         </div>
         {/* QI BAR */}
         <div className="relative h-4 bg-gray-200 w-full rounded-sm overflow-hidden border border-gray-300 shadow-inner">
-            <div className={`absolute top-0 left-0 h-full transition-all duration-300 ease-out ${type === 'player' ? 'bg-sky-500' : 'bg-purple-600'}`}
+            <div className={`absolute top-0 left-0 h-full transition-all duration-300 ease-out ${type === 'player' ? 'bg-sky-600' : 'bg-sky-600'}`}
                 style={{ width: `${getPct(stats.qi, maxStats.qi)}%` }} />
             <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-mono font-bold drop-shadow-md z-20">
                 {Math.max(0, Math.floor(stats.qi))} / {maxStats.qi} Qi

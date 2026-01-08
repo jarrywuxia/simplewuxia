@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler"); 
 const admin = require("firebase-admin");
 const { getDatabase } = require('firebase-admin/database');
 
@@ -566,4 +567,42 @@ exports.sendChatMessage = onCall(async (request) => {
     await rtdb.ref().update(updates);
 
     return { success: true };
+});
+
+// --- AUTOMATIC CLEANUP (The Janitor) ---
+// Runs every day at midnight to delete chat messages older than 24 hours
+exports.cleanupChat = onSchedule("every day 00:00", async (event) => {
+    const rtdb = getDatabase();
+    const chatRef = rtdb.ref('globalChat');
+    const rateLimitRef = rtdb.ref('chatRateLimits');
+
+    // 1. Calculate cutoff (24 hours ago)
+    const cutoff = Date.now() - (24 * 60 * 60 * 1000);
+
+    // 2. Query for old messages
+    const oldMessagesSnap = await chatRef.orderByChild('timestamp').endAt(cutoff).once('value');
+    
+    // 3. Prepare deletion updates
+    const updates = {};
+    let count = 0;
+
+    oldMessagesSnap.forEach((child) => {
+        updates[`globalChat/${child.key}`] = null; // Setting to null deletes it
+        count++;
+    });
+
+    // 4. Also clean up old Rate Limits (Optional, but good for hygiene)
+    // We can't query these easily by value, but we can fetch them all since they are small
+    const ratesSnap = await rateLimitRef.once('value');
+    ratesSnap.forEach((child) => {
+        if (child.val() < cutoff) {
+            updates[`chatRateLimits/${child.key}`] = null;
+        }
+    });
+
+    // 5. Commit deletions
+    if (Object.keys(updates).length > 0) {
+        await rtdb.ref().update(updates);
+        console.log(`Janitor deleted ${count} old messages.`);
+    }
 });

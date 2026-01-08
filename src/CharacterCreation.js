@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { db } from './firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { createNewPlayer } from './gameData';
+import { functions } from './firebase';
+import { httpsCallable } from 'firebase/functions';
 
 function CharacterCreation({ user, onCharacterCreated }) {
   const [displayName, setDisplayName] = useState('');
@@ -14,7 +13,7 @@ function CharacterCreation({ user, onCharacterCreated }) {
     
     const trimmedName = displayName.trim();
     
-    // Validation
+    // 1. Client-Side Validation (for better UX)
     if (trimmedName.length < 3) {
       setError('Name must be at least 3 characters');
       return;
@@ -34,31 +33,30 @@ function CharacterCreation({ user, onCharacterCreated }) {
     setLoading(true);
     
     try {
-      // Check if username is already taken
-      const usernameDoc = doc(db, 'usernames', trimmedName.toLowerCase());
-      const usernameSnap = await getDoc(usernameDoc);
+      // 2. Call the Secure Cloud Function
+      // The server will handle duplication checks and safe data generation
+      const createCharacterFn = httpsCallable(functions, 'createCharacter');
       
-      if (usernameSnap.exists()) {
-        setError('This name is already taken');
-        setLoading(false);
-        return;
-      }
-      
-      // Create player document
-      const playerData = createNewPlayer(user.uid, trimmedName);
-      await setDoc(doc(db, 'players', user.uid), playerData);
-      
-      // Claim the username
-      await setDoc(usernameDoc, {
-        userId: user.uid,
-        displayName: trimmedName,
-        claimedAt: Date.now()
+      await createCharacterFn({ 
+        displayName: trimmedName 
       });
       
+      // 3. Success
       onCharacterCreated();
+      
     } catch (err) {
-      setError('Failed to create character. Please try again.');
-      console.error(err);
+      console.error("Creation Error:", err);
+      
+      // Map server errors to user-friendly messages
+      if (err.message.includes('taken')) {
+        setError('This name is already taken.');
+      } else if (err.message.includes('already exists')) {
+        setError('You already have a character.');
+      } else if (err.message.includes('Invalid characters')) {
+        setError('Invalid characters in name.');
+      } else {
+        setError('Failed to create character. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

@@ -11,7 +11,7 @@ export const TECHNIQUE_REGISTRY = {
     description: 'A weak attack used when completely drained of Qi.',
     type: TECH_TYPES.OFFENSE,
     icon: '/assets/icons/techniques/iron_fist.png', // Placeholder
-    cooldown: 1, 
+    cooldown: 10, 
     qiCostBase: 0,
     qiCostPct: 0,
     damageBase: 5,

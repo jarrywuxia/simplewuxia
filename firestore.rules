@@ -7,27 +7,22 @@ service cloud.firestore {
       // 1. READ: You can see your own stats
       allow read: if request.auth != null && request.auth.uid == userId;
       
-      // 2. CREATE: You can create a NEW character (for CharacterCreation.js)
-      allow create: if request.auth != null && request.auth.uid == userId;
-      
-      // 3. UPDATE/DELETE: BLOCKED. 
-      // The client cannot change XP/Gold/Items. 
-      // Only the Server (Cloud Functions) can do this now.
-      allow update, delete: if false;
+      // 2. WRITE (Create/Update/Delete): COMPLETELY BLOCKED.
+      // Character creation is now handled by the secure 'createCharacter' Cloud Function.
+      // This prevents the "God Mode" hack where clients inject fake stats.
+      // Cloud Functions (Admin SDK) bypass these rules automatically.
+      allow write: if false;
     }
     
     // --- USERNAMES (The Registry) ---
-    // We keep this open for now so CharacterCreation.js still works
     match /usernames/{username} {
+      // Allow reading so the UI can quickly check if a name exists (optional)
       allow read: if request.auth != null;
       
-      // Allow claiming a name
-      allow create: if request.auth != null && 
-                       request.resource.data.userId == request.auth.uid;
-                       
-      // Allow releasing a name (if you delete your account later)
-      allow delete: if request.auth != null && 
-                       resource.data.userId == request.auth.uid;
+      // WRITE: BLOCKED.
+      // The 'createCharacter' Cloud Function handles name claiming securely.
+      // This prevents users from stealing names or corrupting the registry.
+      allow write: if false;
     }
     
     // --- SAFETY NET ---

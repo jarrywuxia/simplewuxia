@@ -9,7 +9,7 @@ const TECHNIQUE_REGISTRY = {
     id: 'struggle',
     name: 'Desperate Flail',
     type: TECH_TYPES.OFFENSE,
-    cooldown: 1, 
+    cooldown: 10, 
     qiCostBase: 0,
     qiCostPct: 0,
     damageBase: 5,    // NEW: Flat 5 Damage

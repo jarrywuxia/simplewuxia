@@ -1,6 +1,8 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
+const { getNewPlayerData } = require('./playerTemplate');
+
 // --- IMPORT THE NEW SYSTEM ---
 const { generateQuickMeditationReward, generateDeepMeditationReward } = require('./meditationSystem');
 
@@ -438,5 +440,57 @@ exports.pveFight = onCall(async (request) => {
             log: result.log,
             rewards: result.winner === 'player' ? result.rewards : null
         };
+    });
+});
+
+// functions/index.js (Add to bottom)
+
+exports.createCharacter = onCall(async (request) => {
+    // 1. Auth Check
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'You must be logged in.');
+    }
+
+    const uid = request.auth.uid;
+    const { displayName } = request.data;
+    const cleanName = displayName ? displayName.trim() : '';
+
+    // 2. Validation (Server Side is the only one that matters)
+    if (!cleanName || cleanName.length < 3 || cleanName.length > 20) {
+        throw new HttpsError('invalid-argument', 'Name must be 3-20 characters.');
+    }
+    if (!/^[a-zA-Z0-9_ ]+$/.test(cleanName)) {
+        throw new HttpsError('invalid-argument', 'Invalid characters in name.');
+    }
+
+    const playerRef = db.collection('players').doc(uid);
+    const usernameRef = db.collection('usernames').doc(cleanName.toLowerCase());
+
+    // 3. Transaction (To handle Name Claiming + Player Creation atomically)
+    return await db.runTransaction(async (transaction) => {
+        // Check if player already exists
+        const playerDoc = await transaction.get(playerRef);
+        if (playerDoc.exists) {
+            throw new HttpsError('already-exists', 'Character already exists.');
+        }
+
+        // Check if username is taken
+        const usernameDoc = await transaction.get(usernameRef);
+        if (usernameDoc.exists) {
+            throw new HttpsError('already-exists', 'This name is taken.');
+        }
+
+        // 4. Generate SECURE Data
+        const newPlayerData = getNewPlayerData(uid, cleanName);
+
+        // 5. Write to DB
+        transaction.set(playerRef, newPlayerData);
+        transaction.set(usernameRef, {
+            userId: uid,
+            displayName: cleanName,
+            createdAt: Date.now()
+        });
+
+        return { success: true };
     });
 });

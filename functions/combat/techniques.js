@@ -9,11 +9,15 @@ const TECHNIQUE_REGISTRY = {
     id: 'struggle',
     name: 'Desperate Flail',
     type: TECH_TYPES.OFFENSE,
-    cooldown: 10, 
+    cooldown: 10,
     qiCostBase: 0,
     qiCostPct: 0,
-    damageBase: 5,    // NEW: Flat 5 Damage
-    damageScale: 0.5, // + 50% Strength
+    
+    // --- NEW STATS ---
+    power: 50,          // 50% of Atk
+    accuracy: 90,       // 90% Base Accuracy
+    scalingStat: 'strength', // Uses Strength as "Atk"
+    
     isDefault: true
   },
   'iron_fist': {
@@ -23,8 +27,12 @@ const TECHNIQUE_REGISTRY = {
     cooldown: 3,
     qiCostBase: 5,
     qiCostPct: 0.0,
-    damageBase: 10,   // NEW: Base 15
-    damageScale: 0,
+    
+    // --- NEW STATS ---
+    power: 120,         // 120% of Atk
+    accuracy: 95,       // 95% Base Accuracy
+    scalingStat: 'strength',
+    
     initialCharge: 0
   },
   'spirit_shield': {
@@ -33,8 +41,9 @@ const TECHNIQUE_REGISTRY = {
     type: TECH_TYPES.DEFENSE,
     cooldown: 8,
     qiCostBase: 10,
-    qiCostPct: 0.05, 
-    effect: { type: 'shield', value: 15 }, // Increased flat shield
+    qiCostPct: 0.05,
+    effect: { type: 'shield', value: 15 }, 
+    // Shield doesn't use accuracy/power usually, but we keep the object clean
     initialCharge: 0
   },
   'qi_burst': {
@@ -44,8 +53,12 @@ const TECHNIQUE_REGISTRY = {
     cooldown: 5,
     qiCostBase: 20,
     qiCostPct: 0.1,
-    damageBase: 50,   // NEW: High Flat Damage
-    damageScale: 0,   // 0% Strength Scaling (Pure Magic)
+    
+    // --- NEW STATS ---
+    power: 150,         // 150% of Atk (High damage)
+    accuracy: 85,       // 85% Accuracy (Less accurate than punch)
+    scalingStat: 'strength',  // Uses Strength as "Atk" power
+    
     initialCharge: 0
   },
   'gather_qi': {

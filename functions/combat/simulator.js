@@ -1,17 +1,57 @@
 const { TECHNIQUE_REGISTRY } = require('./techniques');
 
-// UPDATED: Calculate damage using Base + Scale
+// CONSTANT K: Controls defense scaling efficiency.
+// Formula: Multiplier = Atk / (Atk + (Def * K))
+const DEFENSE_CONSTANT_K = 1; 
+
+// --- NEW: HIT CALCULATION ---
+const calculateHit = (technique, defender) => {
+    // 1. Get Base Accuracy (default 100 if not defined)
+    const baseAcc = technique.accuracy !== undefined ? technique.accuracy : 100;
+    
+    // 2. Get Defender Evasion (default 0)
+    const targetEvasion = defender.stats.evasion || 0;
+    
+    // 3. Calculate Chance
+    const hitChance = baseAcc - targetEvasion;
+    
+    // 4. Roll (0 to 100)
+    const roll = Math.random() * 100;
+    
+    return roll <= hitChance;
+};
+
+// --- UPDATED: DAMAGE FORMULA ---
 const calculateDamage = (attacker, defender, tech) => {
-  const base = tech.damageBase || 0;
-  const scale = tech.damageScale || 0;
+  // 1. DETERMINE ATK STAT (Strength vs Qi)
+  // Default to strength if not specified in technique
+  const scalingStat = tech.scalingStat || 'strength';
+  const atk = attacker.stats[scalingStat] || 0;
   
-  // Formula: (Base + (Strength * Scale))
-  const rawOffense = base + (attacker.stats.strength * scale);
+  // 2. DETERMINE DEF STAT
+  const def = defender.stats.defense || 0;
   
-  // Defense Mitigation (Flat reduction for now)
-  const mitigation = (defender.stats.defense * 0.5);
+  // 3. GET POWER
+  const power = tech.power || 100;
   
-  return Math.max(1, Math.floor(rawOffense - mitigation));
+  // 4. THE FORMULA
+  // Part A: [Atk * (Power / 100)]
+  const rawOffense = atk * (power / 100);
+  
+  // Part B: [Atk / (Atk + (Def * K))]
+  // Prevent divide by zero if Atk is 0. If Atk is 0, factor is 0.
+  const defenseFactor = atk > 0 
+      ? (atk / (atk + (def * DEFENSE_CONSTANT_K))) 
+      : 0;
+
+  // Part C: Buffs (Placeholder = 1.0)
+  const buffMultiplier = 1.0; 
+
+  // FINAL CALCULATION
+  const totalDamage = rawOffense * defenseFactor * buffMultiplier;
+  
+  // Ensure at least 1 damage on a hit
+  return Math.max(1, Math.floor(totalDamage));
 };
 
 const applyDamageToTarget = (target, amount) => {
@@ -29,29 +69,33 @@ const applyDamageToTarget = (target, amount) => {
     return hpDamage; 
 };
 
+// --- UPDATED: EFFECT LOGIC (Includes Hit Check) ---
 const applyTechniqueEffect = (tech, user, target) => {
-    let result = { damage: 0, heal: 0, qiRestore: 0, shield: 0 };
+    let result = { damage: 0, heal: 0, qiRestore: 0, shield: 0, missed: false };
 
-    // 1. Shields 
+    // 1. Support/Self effects (Shields/Heals) always "hit" the user
     if (tech.effect && tech.effect.type === 'shield') {
         const val = tech.effect.value;
         user.shield += val;
         result.shield = val;
     }
-
-    // 2. Direct Damage (Offense)
-    if (tech.type === 'offense' || tech.damageBase > 0) {
-        // Pass 'tech' to calculator now
-        const potentialDmg = calculateDamage(user, target, tech);
-        applyDamageToTarget(target, potentialDmg);
-        result.damage = potentialDmg;
-    }
-
-    // 3. Qi Restore
     if (tech.effect && tech.effect.type === 'restore_qi') {
         const gain = tech.effect.value;
         user.qi = Math.min(user.maxQi, user.qi + gain);
         result.qiRestore = gain;
+    }
+
+    // 2. Offensive Moves (Require Accuracy Check against Target)
+    if (tech.type === 'offense' || tech.power > 0) {
+        const isHit = calculateHit(tech, target);
+        
+        if (isHit) {
+            const potentialDmg = calculateDamage(user, target, tech);
+            applyDamageToTarget(target, potentialDmg);
+            result.damage = potentialDmg;
+        } else {
+            result.missed = true; // Flag as miss
+        }
     }
 
     return result;
@@ -70,7 +114,8 @@ exports.simulateCombat = (playerData, enemyData) => {
       maxHp: data.stats.maxHp,
       qi: data.stats.qi || 0,
       maxQi: data.stats.qi || 0,
-      stats: data.stats,
+      // Ensure evasion exists in stats object
+      stats: { ...data.stats, evasion: data.stats.evasion || 0 },
       shield: 0, 
       loadout: data.loadout || (isPlayer ? (data.equippedTechniques || []) : []),
       nextActionTime: 0, 
@@ -109,6 +154,7 @@ exports.simulateCombat = (playerData, enemyData) => {
       let logEntry = null;
 
       if (actor.consecutiveSkips >= 5) {
+          // Struggle Logic
           const sData = TECHNIQUE_REGISTRY['struggle'];
           const res = applyTechniqueEffect(sData, actor, target);
           actor.qi = Math.min(actor.maxQi, actor.qi + 5);
@@ -118,13 +164,14 @@ exports.simulateCombat = (playerData, enemyData) => {
               time: Number(time.toFixed(1)),
               actor: actor.id,
               action: sData.name,
-              type: 'struggle',
+              type: res.missed ? 'miss' : 'struggle', // Handle struggle miss
               value: res.damage,
               targetHp: target.hp,
               currentQi: Math.floor(actor.qi)
           };
           actor.consecutiveSkips = 0;
       } else {
+          // Normal Technique Logic
           const techId = actor.loadout[actor.currentSlot];
           
           if (!techId) {
@@ -149,10 +196,14 @@ exports.simulateCombat = (playerData, enemyData) => {
                       qiRestore: res.qiRestore,
                       targetHp: target.hp,
                       currentQi: Math.floor(actor.qi),
-                      currentShield: actor.shield
+                      currentShield: actor.shield,
+                      missed: res.missed // Pass miss flag to log
                   };
                   
-                  if (res.shield > 0) {
+                  // DETERMINE LOG TYPE FOR FRONTEND
+                  if (res.missed) {
+                      logEntry.type = 'miss';
+                  } else if (res.shield > 0) {
                       logEntry.type = 'shield';
                       logEntry.value = res.shield; 
                   } else if (res.damage > 0) {
@@ -164,6 +215,7 @@ exports.simulateCombat = (playerData, enemyData) => {
                   actor.currentSlot = (actor.currentSlot + 1) % 5;
                   actor.consecutiveSkips = 0;
               } else {
+                  // Not enough Qi
                   actor.nextActionTime = time + 1.0;
                   actor.currentSlot = (actor.currentSlot + 1) % 5;
                   actor.consecutiveSkips++;

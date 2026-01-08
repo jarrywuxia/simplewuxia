@@ -12,7 +12,8 @@ const MASTER_ITEMS = {
     name: 'Wooden Sword',
     type: 'equipment',
     slot: 'weapon',
-    stats: { strength: 5, qiPower: 0 },
+    // Now adds Strength for your new combat formula
+    stats: { strength: 5, qiPower: 0 }, 
     value: 50
   },
   'iron_saber': {
@@ -26,7 +27,7 @@ const MASTER_ITEMS = {
     name: 'Jade Sword',
     type: 'equipment',
     slot: 'weapon',
-    stats: { strength: 10, qiPower: 15 },
+    stats: { strength: 10, qi: 15 }, // 'qiPower' renamed to 'qi' to match stat name
     value: 500
   },
 
@@ -35,15 +36,27 @@ const MASTER_ITEMS = {
     name: 'Canvas Robe',
     type: 'equipment',
     slot: 'armor',
-    stats: { defense: 5, maxHp: 20 },
+    // Adds 1% Evasion
+    stats: { defense: 5, maxHp: 20, evasion: 1 }, 
     value: 50
   },
   'silk_robe': {
     name: 'Spirit Silk Robe',
     type: 'equipment',
     slot: 'armor',
-    stats: { defense: 10, qiPower: 5, maxHp: 50 },
+    // Adds 5% Evasion
+    stats: { defense: 10, qi: 5, maxHp: 50, evasion: 5 }, 
     value: 300
+  },
+  
+  // --- NEW ITEM ---
+  'leather_boots': {
+    name: 'Leather Boots',
+    type: 'equipment',
+    slot: 'boots',
+    // Pure Evasion item
+    stats: { defense: 2, evasion: 3 }, 
+    value: 100
   }
 };
 

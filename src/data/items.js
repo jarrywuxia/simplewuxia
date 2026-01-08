@@ -3,6 +3,7 @@
 export const ITEM_TYPES = {
   WEAPON: 'weapon',
   ARMOR: 'armor',
+  BOOTS: 'boots', // Added Boots category
   CONSUMABLE: 'consumable',
   MATERIAL: 'material'
 };
@@ -12,31 +13,31 @@ export const itemRegistry = {
   'wooden_sword': {
     id: 'wooden_sword',
     name: 'Wooden Sword',
-    description: 'A practice sword carved from a sturdy branch.',
+    description: 'A practice sword. (+5 Str)',
     type: ITEM_TYPES.WEAPON,
     slot: 'weapon',
-    icon: '/assets/icons/items/weapons/SODA_Icons_ShortSword_19.png', // Placeholder
+    icon: '/assets/icons/items/weapons/SODA_Icons_ShortSword_19.png',
     stats: { strength: 5 },
     rarity: 'common'
   },
   'iron_saber': {
     id: 'iron_saber',
     name: 'Iron Saber',
-    description: 'A heavy blade used by sect guards.',
+    description: 'Standard issue guard weapon. (+15 Str, +2 Qi)',
     type: ITEM_TYPES.WEAPON,
     slot: 'weapon',
-    icon: '/assets/icons/items/weapons/SODA_Icon_Weapons_Slingshot.png', // Placeholder
-    stats: { strength: 15, qiPower: 2 },
+    icon: '/assets/icons/items/weapons/SODA_Icon_Weapons_Slingshot.png',
+    stats: { strength: 15, qi: 2 },
     rarity: 'uncommon'
   },
   'jade_sword': {
     id: 'jade_sword',
     name: 'Jade Sword',
-    description: 'A blade infused with spirit energy.',
+    description: 'Infused with spirit energy. (+10 Str, +15 Qi)',
     type: ITEM_TYPES.WEAPON,
     slot: 'weapon',
-    icon: '/assets/icons/items/weapons/SODA_Icon_Weapons_Sword.png', // Placeholder
-    stats: { strength: 10, qiPower: 15 },
+    icon: '/assets/icons/items/weapons/SODA_Icon_Weapons_Sword.png',
+    stats: { strength: 10, qi: 15 },
     rarity: 'rare'
   },
 
@@ -44,22 +45,34 @@ export const itemRegistry = {
   'canvas_robe': {
     id: 'canvas_robe',
     name: 'Canvas Robe',
-    description: 'Rough clothing worn by outer disciples.',
+    description: 'Rough clothing. (+5 Def, +20 HP, +1% Eva)',
     type: ITEM_TYPES.ARMOR,
     slot: 'armor',
     icon: '/assets/icons/items/armor/SODA_Icon_Armor_Leather_Chest.png',
-    stats: { defense: 5, maxHp: 20 },
+    stats: { defense: 5, maxHp: 20, evasion: 1 },
     rarity: 'common'
   },
   'silk_robe': {
     id: 'silk_robe',
     name: 'Spirit Silk Robe',
-    description: 'Shimmers with a faint internal light.',
+    description: 'Shimmers with light. (+10 Def, +5 Qi, +50 HP, +5% Eva)',
     type: ITEM_TYPES.ARMOR,
     slot: 'armor',
     icon: '/assets/icons/items/armor/SODA_Icon_Armor_Cloth_Chest.png',
-    stats: { defense: 10, qiPower: 5, maxHp: 50 },
+    stats: { defense: 10, qi: 5, maxHp: 50, evasion: 5 },
     rarity: 'rare'
+  },
+
+  // --- BOOTS ---
+  'leather_boots': {
+    id: 'leather_boots',
+    name: 'Leather Boots',
+    description: 'Lightweight boots for dodging. (+2 Def, +3% Eva)',
+    type: ITEM_TYPES.BOOTS,
+    slot: 'boots',
+    icon: '/assets/icons/items/armor/SODA_Icon_Armor_Leather_Foot.png', // You might need to find a boot icon
+    stats: { defense: 2, evasion: 3 },
+    rarity: 'common'
   },
 
   // --- CONSUMABLES ---

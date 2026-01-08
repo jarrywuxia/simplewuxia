@@ -31,6 +31,7 @@ exports.getNewPlayerData = (userId, displayName) => ({
     defense: 5,
     qi: 50, 
     maxHp: 100,
+    evasion: 0, // NEW: Starts at 0, cannot be allocated
   },
   
   currentHp: 100,

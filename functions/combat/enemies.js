@@ -7,8 +7,9 @@ const ENEMIES = {
       strength: 0,
       defense: 0,
       qi: 0,
+      evasion: 0 // Cannot dodge
     },
-    loadout: [], // Does nothing
+    loadout: [], 
     rewards: { exp: 10, stones: 0 }
   },
   'spirit_rat': {
@@ -18,9 +19,9 @@ const ENEMIES = {
       maxHp: 150,
       strength: 8,
       defense: 2,
-      qi: 30, // Low Qi pool
+      qi: 30,
+      evasion: 10 // 10% chance to dodge standard attacks
     },
-    // It bites, then tries to recover breath, then bites again
     loadout: ['iron_fist', 'gather_qi'], 
     rewards: { exp: 25, stones: 5 }
   }

@@ -1,9 +1,30 @@
 import React from 'react';
 import { getItem } from '../data/items';
 
-const STAT_ORDER = ['strength', 'defense', 'qi', 'maxHp'];
+// Added 'evasion' to the list
+const STAT_ORDER = ['strength', 'defense', 'qi', 'maxHp', 'evasion'];
 
 function ProfilePage({ playerData, onAllocateStat, onItemClick, actionLoading }) {
+  
+  // Helper to check if a stat is allocatable
+  const isAllocatable = (key) => ['strength', 'defense', 'qi', 'maxHp'].includes(key);
+
+  // Helper to calculate total stats (Visual only - Backend does real math)
+  // This helps the user see their "Battle Stats" in the profile
+  const getTotalStat = (key) => {
+    let base = playerData.stats[key] || 0;
+    // Iterate equipment to add visual bonuses
+    if (playerData.equipment) {
+        Object.values(playerData.equipment).forEach(itemId => {
+            const item = getItem(itemId);
+            if (item && item.stats && item.stats[key]) {
+                base += item.stats[key];
+            }
+        });
+    }
+    return base;
+  };
+
   return (
     <div className="card">
       <h2 className="text-2xl font-bold text-ink mb-6 font-serif border-b border-border pb-2">Cultivator Profile</h2>
@@ -14,7 +35,11 @@ function ProfilePage({ playerData, onAllocateStat, onItemClick, actionLoading })
           <h3 className="text-[10px] font-bold text-ink-light uppercase tracking-widest mb-4">Attributes</h3>
           <div className="space-y-4">
             {STAT_ORDER.map((key) => {
-              const value = playerData.stats[key] || 0;
+              // Calculate total for display (Base + Gear)
+              const totalValue = getTotalStat(key);
+              const baseValue = playerData.stats[key] || 0;
+              const bonus = totalValue - baseValue;
+
               return (
                 <div key={key} className="flex justify-between items-center border-b border-border/50 pb-2">
                   <div className="flex flex-col">
@@ -22,13 +47,21 @@ function ProfilePage({ playerData, onAllocateStat, onItemClick, actionLoading })
                     <span className="text-[10px] text-ink-light italic leading-none">
                       {key === 'strength' && 'Increases physical damage'}
                       {key === 'defense' && 'Reduces damage taken'}
-                      {key === 'qiPower' && 'Increases skill effectiveness'}
+                      {key === 'qi' && 'Increases skill damage & max Qi'}
                       {key === 'maxHp' && 'Maximum health points'}
+                      {key === 'evasion' && 'Chance to dodge attacks'}
                     </span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="font-bold text-ink mono text-lg">{value}</span>
-                    {playerData.unallocatedPoints > 0 && (
+                    <div className="text-right">
+                        <span className="font-bold text-ink mono text-lg">{totalValue}</span>
+                        {/* Show breakdown if there is gear bonus */}
+                        {bonus > 0 && <span className="text-[10px] text-green-600 block">({baseValue} + {bonus})</span>}
+                        {key === 'evasion' && <span className="text-[10px] text-ink-light block">% Chance</span>}
+                    </div>
+                    
+                    {/* Only show + Button if points available AND stat is allocatable */}
+                    {playerData.unallocatedPoints > 0 && isAllocatable(key) && (
                       <button 
                         disabled={actionLoading}
                         onClick={() => onAllocateStat(key)}
@@ -36,6 +69,10 @@ function ProfilePage({ playerData, onAllocateStat, onItemClick, actionLoading })
                       >
                         +
                       </button>
+                    )}
+                    {/* Placeholder for alignment if button is missing */}
+                    {playerData.unallocatedPoints > 0 && !isAllocatable(key) && (
+                         <div className="w-8 h-8"></div> 
                     )}
                   </div>
                 </div>

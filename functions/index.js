@@ -22,26 +22,20 @@ const BAD_WORDS_LIST = [
 ];
 
 // Helper: Converts "fuck" -> /f[\W_]*u[\W_]*c[\W_]*k/gi
-// This matches: "fu.ck", "f u c k", "f_u-c.k", "f@ck"
 const generateStrictPattern = (word) => {
-    // Escape the word chars just in case, then join with "any non-word char or underscore"
     const pattern = word.split('').join('[\\W_]*');
     return new RegExp(pattern, 'gi');
 };
 
-// Generate the patterns automatically
 const STRICT_PATTERNS = BAD_WORDS_LIST.map(generateStrictPattern);
 
 // Helper: Clean text using BOTH library and Strict Regex
 const cleanTextSecurely = (text) => {
     let cleaned = text;
-    
-    // A. Library Filter (Standard words)
     try {
         if (filter.isProfane(cleaned)) cleaned = filter.clean(cleaned);
     } catch (e) {}
 
-    // B. Strict Regex (Evasion attempts)
     STRICT_PATTERNS.forEach(pattern => {
         cleaned = cleaned.replace(pattern, (match) => '*'.repeat(match.length));
     });
@@ -49,7 +43,6 @@ const cleanTextSecurely = (text) => {
     return cleaned;
 };
 
-// Helper: Check if text is profane (for blocking names)
 const isTextProfane = (text) => {
     if (filter.isProfane(text)) return true;
     return STRICT_PATTERNS.some(pattern => pattern.test(text));
@@ -85,23 +78,48 @@ const XP_PER_STAGE = 100;
 const STAT_POINTS_PER_STAGE = 5;
 const DEEP_MEDITATION_COST = 20;
 
-// --- 4. EXPORTED FUNCTIONS ---
+// --- 4. HELPER FUNCTIONS ---
+
+// NEW: Calculates total stats by combining Base Stats + Equipment Stats
+const calculateTotalStats = (playerData) => {
+    // 1. Copy Base Stats
+    let total = { ...playerData.stats };
+    
+    // Ensure evasion exists (legacy support)
+    if (total.evasion === undefined) total.evasion = 0;
+
+    // 2. Iterate Equipped Items
+    const equipment = playerData.equipment || {};
+    for (const slot in equipment) {
+        const itemId = equipment[slot];
+        if (itemId) {
+            const itemDef = MASTER_ITEMS[itemId];
+            if (itemDef && itemDef.stats) {
+                // Add Item Stats to Total
+                for (const [stat, value] of Object.entries(itemDef.stats)) {
+                    // Use (total[stat] || 0) to handle stats that don't exist on base char (like Evasion)
+                    total[stat] = (total[stat] || 0) + value;
+                }
+            }
+        }
+    }
+    return total;
+};
+
+// --- 5. EXPORTED CLOUD FUNCTIONS ---
 
 exports.meditate = onCall(async (request) => {
-    // 1. Auth Check
     if (!request.auth) throw new HttpsError('unauthenticated', 'You must be logged in.');
 
     const uid = request.auth.uid;
     const type = request.data.type || 'quick'; 
     const now = Date.now();
     
-    // --- COST SAVING CHECK (RTDB) ---
     const rtdb = getDatabase();
     const cooldownRef = rtdb.ref(`meditationState/${uid}`);
     const cooldownSnap = await cooldownRef.once('value');
     const cooldownData = cooldownSnap.val() || { unlockTime: 0 };
 
-    // If "Quick" meditation, check the timer BEFORE touching Firestore
     if (type === 'quick') {
         if (now < cooldownData.unlockTime) {
             throw new HttpsError('resource-exhausted', 'Meditation is on cooldown.');
@@ -114,19 +132,16 @@ exports.meditate = onCall(async (request) => {
         throw new HttpsError('invalid-argument', 'Invalid meditation type.');
     }
 
-    // --- EXPENSIVE LOGIC (FIRESTORE) ---
     return await db.runTransaction(async (transaction) => {
         const playerDoc = await transaction.get(playerRef);
         if (!playerDoc.exists) throw new HttpsError('not-found', 'Character not found.');
 
         const data = playerDoc.data();
         
-        // 2. APPLY PASSIVE REGEN
         const regenData = calculatePassiveRegen(data);
         let currentEnergy = regenData.energy;
         const newLastEnergyUpdate = regenData.lastEnergyUpdate;
 
-        // 3. Logic Checks (Deep Meditation Cost)
         if (type === 'deep') {
             if (currentEnergy < DEEP_MEDITATION_COST) {
                 throw new HttpsError('failed-precondition', 'Not enough energy.');
@@ -134,7 +149,6 @@ exports.meditate = onCall(async (request) => {
             currentEnergy -= DEEP_MEDITATION_COST;
         }
 
-        // 4. Generate Rewards
         let result;
         if (type === 'quick') {
             result = generateQuickMeditationReward(data);
@@ -142,7 +156,6 @@ exports.meditate = onCall(async (request) => {
             result = generateDeepMeditationReward(data);
         }
 
-        // 5. Inventory Logic
         let newInventory = data.inventory || [];
         if (result.item) {
             const itemIndex = newInventory.findIndex(item => item.id === result.item);
@@ -153,7 +166,6 @@ exports.meditate = onCall(async (request) => {
             }
         }
 
-        // 6. Leveling Logic
         let newXp = (data.experience || 0) + result.experience;
         let newStones = (data.spiritStones || 0) + result.spiritStones;
         let newRealmIndex = data.realmIndex || 0;
@@ -180,11 +192,9 @@ exports.meditate = onCall(async (request) => {
             }
         }
 
-        // 7. Calculate New Cooldown
         const duration = (result.cooldown || 5) * 1000;
         const newUnlockTime = now + duration;
 
-        // 8. Update Firestore
         transaction.update(playerRef, {
             experience: newXp,
             spiritStones: newStones,
@@ -199,8 +209,6 @@ exports.meditate = onCall(async (request) => {
             lastCooldownDuration: result.cooldown || 5 
         });
 
-        // 9. Update RTDB (For the cheap check next time)
-        // Note: We don't await this, we let it run in background to speed up response
         cooldownRef.set({ unlockTime: newUnlockTime });
 
         return {
@@ -446,6 +454,7 @@ exports.equipTechnique = onCall(async (request) => {
     });
 });
 
+// --- UPDATED PVE FIGHT LOGIC ---
 exports.pveFight = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
     
@@ -462,6 +471,15 @@ exports.pveFight = onCall(async (request) => {
 
         if (!enemyData) throw new HttpsError('not-found', 'Enemy not found.');
 
+        // 1. Calculate REAL Stats (Base + Equipment)
+        const battleStats = calculateTotalStats(playerData);
+        
+        // 2. Create a temporary battle object to send to simulator
+        const playerBattleData = {
+            ...playerData,
+            stats: battleStats 
+        };
+
         const regenData = calculatePassiveRegen(playerData);
         let currentEnergy = regenData.energy;
         const ENERGY_COST = 5;
@@ -470,7 +488,8 @@ exports.pveFight = onCall(async (request) => {
             throw new HttpsError('failed-precondition', 'Not enough energy to fight (Cost: 5).');
         }
 
-        const result = simulateCombat(playerData, enemyData);
+        // 3. Simulate Combat using TOTAL stats
+        const result = simulateCombat(playerBattleData, enemyData);
 
         let updates = {
             energy: currentEnergy - ENERGY_COST,
@@ -493,7 +512,6 @@ exports.pveFight = onCall(async (request) => {
     });
 });
 
-// --- UPDATED CREATE CHARACTER (Uses Strict Regex) ---
 exports.createCharacter = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'You must be logged in.');
 
@@ -508,7 +526,6 @@ exports.createCharacter = onCall(async (request) => {
         throw new HttpsError('invalid-argument', 'Invalid characters in name.');
     }
 
-    // 1. PROFANITY & RESERVED LIST CHECK
     if (isTextProfane(cleanName)) {
         throw new HttpsError('invalid-argument', 'This name cannot be used (Inappropriate).');
     }
@@ -542,7 +559,6 @@ exports.createCharacter = onCall(async (request) => {
     });
 });
 
-// --- UPDATED CHAT (RTDB Optimized + Strict Regex) ---
 exports.sendChatMessage = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
     
@@ -551,14 +567,12 @@ exports.sendChatMessage = onCall(async (request) => {
         throw new HttpsError('invalid-argument', 'Invalid message.');
     }
 
-    // 1. CLEAN THE MESSAGE (Regex + Library)
     const cleanText = cleanTextSecurely(text);
 
     const uid = request.auth.uid;
     const now = Date.now();
     const rtdb = getDatabase();
 
-    // 2. CHECK RATE LIMIT (IN RTDB)
     const rateLimitRef = rtdb.ref(`chatRateLimits/${uid}`);
     const rateLimitSnap = await rateLimitRef.once('value');
     const lastChatTime = rateLimitSnap.val() || 0;
@@ -567,14 +581,12 @@ exports.sendChatMessage = onCall(async (request) => {
         throw new HttpsError('resource-exhausted', 'You are chatting too fast.');
     }
 
-    // 3. FETCH PLAYER INFO
     const playerRef = db.collection('players').doc(uid);
     const playerSnap = await playerRef.get();
     
     if (!playerSnap.exists) throw new HttpsError('not-found', 'No character.');
     const playerData = playerSnap.data();
 
-    // 4. WRITE TO RTDB (Message + Timestamp update)
     const chatRef = rtdb.ref('globalChat');
     const newMessageRef = chatRef.push();
     
@@ -593,30 +605,23 @@ exports.sendChatMessage = onCall(async (request) => {
     return { success: true };
 });
 
-// --- AUTOMATIC CLEANUP (The Janitor) ---
-// Runs every day at midnight to delete chat messages older than 24 hours
 exports.cleanupChat = onSchedule("every day 00:00", async (event) => {
     const rtdb = getDatabase();
     const chatRef = rtdb.ref('globalChat');
     const rateLimitRef = rtdb.ref('chatRateLimits');
 
-    // 1. Calculate cutoff (24 hours ago)
     const cutoff = Date.now() - (24 * 60 * 60 * 1000);
 
-    // 2. Query for old messages
     const oldMessagesSnap = await chatRef.orderByChild('timestamp').endAt(cutoff).once('value');
     
-    // 3. Prepare deletion updates
     const updates = {};
     let count = 0;
 
     oldMessagesSnap.forEach((child) => {
-        updates[`globalChat/${child.key}`] = null; // Setting to null deletes it
+        updates[`globalChat/${child.key}`] = null; 
         count++;
     });
 
-    // 4. Also clean up old Rate Limits (Optional, but good for hygiene)
-    // We can't query these easily by value, but we can fetch them all since they are small
     const ratesSnap = await rateLimitRef.once('value');
     ratesSnap.forEach((child) => {
         if (child.val() < cutoff) {
@@ -624,7 +629,6 @@ exports.cleanupChat = onSchedule("every day 00:00", async (event) => {
         }
     });
 
-    // 5. Commit deletions
     if (Object.keys(updates).length > 0) {
         await rtdb.ref().update(updates);
         console.log(`Janitor deleted ${count} old messages.`);

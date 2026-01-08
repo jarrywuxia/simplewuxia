@@ -3,6 +3,10 @@
     "globalChat": {
       ".read": "auth != null",
       ".write": false
+    },
+    "chatRateLimits": {
+      ".read": false, 
+      ".write": false
     }
   }
 }

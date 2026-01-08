@@ -1,19 +1,74 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
+const { getDatabase } = require('firebase-admin/database');
 
+// --- 1. FILTER & SECURITY SETUP ---
+const Filter = require('bad-words');
+const filter = new Filter();
+
+// List of base words to strictly filter
+const BAD_WORDS_LIST = [
+    'fuck',
+    'nigger',
+    'nigga',
+    'cunt',
+    'bitch',
+    'whore',
+    'faggot',
+    'shit',
+    'slut',
+    'asshole'
+];
+
+// Helper: Converts "fuck" -> /f[\W_]*u[\W_]*c[\W_]*k/gi
+// This matches: "fu.ck", "f u c k", "f_u-c.k", "f@ck"
+const generateStrictPattern = (word) => {
+    // Escape the word chars just in case, then join with "any non-word char or underscore"
+    const pattern = word.split('').join('[\\W_]*');
+    return new RegExp(pattern, 'gi');
+};
+
+// Generate the patterns automatically
+const STRICT_PATTERNS = BAD_WORDS_LIST.map(generateStrictPattern);
+
+// Helper: Clean text using BOTH library and Strict Regex
+const cleanTextSecurely = (text) => {
+    let cleaned = text;
+    
+    // A. Library Filter (Standard words)
+    try {
+        if (filter.isProfane(cleaned)) cleaned = filter.clean(cleaned);
+    } catch (e) {}
+
+    // B. Strict Regex (Evasion attempts)
+    STRICT_PATTERNS.forEach(pattern => {
+        cleaned = cleaned.replace(pattern, (match) => '*'.repeat(match.length));
+    });
+    
+    return cleaned;
+};
+
+// Helper: Check if text is profane (for blocking names)
+const isTextProfane = (text) => {
+    if (filter.isProfane(text)) return true;
+    return STRICT_PATTERNS.some(pattern => pattern.test(text));
+};
+
+// --- 2. GAME IMPORTS ---
 const { getNewPlayerData } = require('./playerTemplate');
-
-// --- IMPORT THE NEW SYSTEM ---
 const { 
   generateQuickMeditationReward, 
   generateDeepMeditationReward, 
   calculatePassiveRegen 
 } = require('./meditationSystem');
+const MASTER_ITEMS = require('./masterItems'); 
+const { simulateCombat } = require('./combat/simulator');
+const { ENEMIES } = require('./combat/enemies');
 
 admin.initializeApp();
 const db = admin.firestore();
 
-// --- GAME CONSTANTS ---
+// --- 3. GAME CONSTANTS ---
 const REALMS = [
   { name: 'Spirit Gathering', stages: ['Early', 'Intermediate', 'Late', 'Peak'] },
   { name: 'Body Refinement', stages: ['Early', 'Intermediate', 'Late', 'Peak'] },
@@ -29,6 +84,8 @@ const XP_PER_STAGE = 100;
 const STAT_POINTS_PER_STAGE = 5;
 const DEEP_MEDITATION_COST = 20;
 
+// --- 4. EXPORTED FUNCTIONS ---
+
 exports.meditate = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'You must be logged in.');
 
@@ -36,7 +93,6 @@ exports.meditate = onCall(async (request) => {
     const type = request.data.type || 'quick'; 
     const playerRef = db.collection('players').doc(uid);
 
-    // 1. Validation (Input Type) - SECURITY FIX
     if (type !== 'quick' && type !== 'deep') {
         throw new HttpsError('invalid-argument', 'Invalid meditation type.');
     }
@@ -48,12 +104,10 @@ exports.meditate = onCall(async (request) => {
         const data = playerDoc.data();
         const now = Date.now();
 
-        // 2. APPLY PASSIVE REGEN (Fixes Energy being stuck)
         const regenData = calculatePassiveRegen(data);
         let currentEnergy = regenData.energy;
         const newLastEnergyUpdate = regenData.lastEnergyUpdate;
 
-        // 3. Logic Checks
         if (type === 'quick') {
             const lastTime = data.lastMeditationTime || 0;
             const cooldown = (data.lastCooldownDuration || 5) * 1000; 
@@ -64,11 +118,9 @@ exports.meditate = onCall(async (request) => {
             if (currentEnergy < DEEP_MEDITATION_COST) {
                 throw new HttpsError('failed-precondition', 'Not enough energy.');
             }
-            // Deduct cost from the REGENERATED amount
             currentEnergy -= DEEP_MEDITATION_COST;
         }
 
-        // 4. Generate Rewards
         let result;
         if (type === 'quick') {
             result = generateQuickMeditationReward(data);
@@ -76,7 +128,6 @@ exports.meditate = onCall(async (request) => {
             result = generateDeepMeditationReward(data);
         }
 
-        // 5. Inventory Logic
         let newInventory = data.inventory || [];
         if (result.item) {
             const itemIndex = newInventory.findIndex(item => item.id === result.item);
@@ -87,7 +138,6 @@ exports.meditate = onCall(async (request) => {
             }
         }
 
-        // 6. Leveling Logic
         let newXp = (data.experience || 0) + result.experience;
         let newStones = (data.spiritStones || 0) + result.spiritStones;
         let newRealmIndex = data.realmIndex || 0;
@@ -114,12 +164,11 @@ exports.meditate = onCall(async (request) => {
             }
         }
 
-        // 7. Update Database
         transaction.update(playerRef, {
             experience: newXp,
             spiritStones: newStones,
-            energy: currentEnergy, // Save the calculated energy
-            lastEnergyUpdate: newLastEnergyUpdate, // Save the regen timestamp
+            energy: currentEnergy,
+            lastEnergyUpdate: newLastEnergyUpdate,
             realmIndex: newRealmIndex,
             stageIndex: newStageIndex,
             unallocatedPoints: newPoints,
@@ -181,10 +230,6 @@ exports.allocateStat = onCall(async (request) => {
     });
 });
 
-// At the very top of functions/index.js
-const MASTER_ITEMS = require('./masterItems'); 
-
-// Add this to your exports
 exports.useItem = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
 
@@ -202,18 +247,15 @@ exports.useItem = onCall(async (request) => {
 
         const data = playerDoc.data();
         
-        // 1. CALCULATE REGEN FIRST
         const regenData = calculatePassiveRegen(data);
         let currentEnergy = regenData.energy;
         const newLastEnergyUpdate = regenData.lastEnergyUpdate;
         
-        // 2. Validate Item
         const itemDef = MASTER_ITEMS[itemId];
         if (!itemDef || itemDef.type !== 'consumable') {
             throw new HttpsError('invalid-argument', 'This item cannot be consumed.');
         }
 
-        // 3. Check Inventory
         let inventory = data.inventory || [];
         const itemIndex = inventory.findIndex(i => i.id === itemId);
         
@@ -221,15 +263,12 @@ exports.useItem = onCall(async (request) => {
             throw new HttpsError('failed-precondition', 'Not enough items.');
         }
 
-        // 4. Apply Effect
         if (itemDef.effect.type === 'restore_energy') {
             const maxEnergy = 100;
             const energyGain = itemDef.effect.value * qtyToUse;
-            // Add pill energy to REGENERATED energy
             currentEnergy = Math.min(maxEnergy, currentEnergy + energyGain);
         }
 
-        // 5. Deduct Item
         if (inventory[itemIndex].quantity > qtyToUse) {
             inventory[itemIndex].quantity -= qtyToUse;
         } else {
@@ -270,12 +309,10 @@ exports.equipItem = onCall(async (request) => {
         const data = playerDoc.data();
         const itemDef = MASTER_ITEMS[itemId];
 
-        // 1. Validate Item
         if (!itemDef || itemDef.type !== 'equipment') {
             throw new HttpsError('invalid-argument', 'Not an equippable item.');
         }
 
-        // 2. Check Ownership
         let inventory = [...(data.inventory || [])];
         const itemIndex = inventory.findIndex(i => i.id === itemId);
         
@@ -283,27 +320,22 @@ exports.equipItem = onCall(async (request) => {
             throw new HttpsError('failed-precondition', 'You do not own this item.');
         }
 
-        // 3. Handle The Swap
-        const targetSlot = itemDef.slot; // e.g., 'weapon', 'armor'
+        const targetSlot = itemDef.slot;
         let equipment = { ...(data.equipment || {}) };
         const currentlyEquippedId = equipment[targetSlot];
 
-        // Remove 1 of the new item from inventory
         if (inventory[itemIndex].quantity > 1) {
             inventory[itemIndex].quantity -= 1;
         } else {
             inventory.splice(itemIndex, 1);
         }
 
-        // If something was equipped, put it back in inventory
         if (currentlyEquippedId) {
             addToInventory(inventory, currentlyEquippedId, 1);
         }
 
-        // Equip the new item
         equipment[targetSlot] = itemId;
 
-        // 4. Update DB
         transaction.update(playerRef, {
             inventory: inventory,
             equipment: equipment
@@ -321,7 +353,7 @@ exports.equipItem = onCall(async (request) => {
 exports.unequipItem = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
     
-    const { slot } = request.data; // e.g., 'weapon'
+    const { slot } = request.data;
     const uid = request.auth.uid;
     const playerRef = db.collection('players').doc(uid);
 
@@ -337,11 +369,8 @@ exports.unequipItem = onCall(async (request) => {
         }
 
         let inventory = [...(data.inventory || [])];
-        
-        // Move item to inventory
         addToInventory(inventory, itemId, 1);
         
-        // Clear slot
         equipment[slot] = null;
 
         transaction.update(playerRef, {
@@ -356,16 +385,12 @@ exports.unequipItem = onCall(async (request) => {
 exports.equipTechnique = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
     
-    // 1. Sanitize Input
     const { techniqueId } = request.data;
-    // Force integer conversion to prevent string/float injection
     const slotIndex = parseInt(request.data.slotIndex, 10);
 
     const uid = request.auth.uid;
     const playerRef = db.collection('players').doc(uid);
 
-    // 2. Validate Input
-    // Check if NaN (not a number) OR out of bounds
     if (isNaN(slotIndex) || slotIndex < 0 || slotIndex > 4) {
         throw new HttpsError('invalid-argument', 'Invalid slot index (0-4).');
     }
@@ -378,21 +403,16 @@ exports.equipTechnique = onCall(async (request) => {
         let equipped = data.equippedTechniques || [null, null, null, null, null];
         const learned = data.learnedTechniques || [];
 
-        // If equipping (not clearing)
         if (techniqueId) {
-            // A. Do they know it?
             if (!learned.includes(techniqueId)) {
                 throw new HttpsError('failed-precondition', 'You have not learned this technique.');
             }
-            // B. Is it already equipped in another slot?
             const existingIndex = equipped.indexOf(techniqueId);
             if (existingIndex > -1 && existingIndex !== slotIndex) {
-                // Clear the old slot so we don't have duplicates
                 equipped[existingIndex] = null;
             }
         }
 
-        // Set the new slot (ensure it's null if unequipping)
         equipped[slotIndex] = techniqueId || null;
 
         transaction.update(playerRef, { equippedTechniques: equipped });
@@ -400,10 +420,6 @@ exports.equipTechnique = onCall(async (request) => {
         return { success: true, message: 'Technique slot updated.' };
     });
 });
-
-// ... existing imports
-const { simulateCombat } = require('./combat/simulator');
-const { ENEMIES } = require('./combat/enemies');
 
 exports.pveFight = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
@@ -421,7 +437,6 @@ exports.pveFight = onCall(async (request) => {
 
         if (!enemyData) throw new HttpsError('not-found', 'Enemy not found.');
 
-        // 1. CALCULATE REGEN & CHECK COST (Security Fix)
         const regenData = calculatePassiveRegen(playerData);
         let currentEnergy = regenData.energy;
         const ENERGY_COST = 5;
@@ -430,11 +445,8 @@ exports.pveFight = onCall(async (request) => {
             throw new HttpsError('failed-precondition', 'Not enough energy to fight (Cost: 5).');
         }
 
-        // 2. Run Simulation
         const result = simulateCombat(playerData, enemyData);
 
-        // 3. Prepare Updates
-        // Deduct energy immediately
         let updates = {
             energy: currentEnergy - ENERGY_COST,
             lastEnergyUpdate: regenData.lastEnergyUpdate
@@ -445,7 +457,6 @@ exports.pveFight = onCall(async (request) => {
              updates.spiritStones = (playerData.spiritStones || 0) + (result.rewards.stones || 0);
         }
 
-        // 4. Update DB
         transaction.update(playerRef, updates);
 
         return {
@@ -457,8 +468,7 @@ exports.pveFight = onCall(async (request) => {
     });
 });
 
-// functions/index.js (Add to bottom)
-
+// --- UPDATED CREATE CHARACTER (Uses Strict Regex) ---
 exports.createCharacter = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'You must be logged in.');
 
@@ -466,7 +476,6 @@ exports.createCharacter = onCall(async (request) => {
     const { displayName } = request.data;
     const cleanName = displayName ? displayName.trim() : '';
 
-    // 1. Length/Char Validation
     if (!cleanName || cleanName.length < 3 || cleanName.length > 20) {
         throw new HttpsError('invalid-argument', 'Name must be 3-20 characters.');
     }
@@ -474,13 +483,15 @@ exports.createCharacter = onCall(async (request) => {
         throw new HttpsError('invalid-argument', 'Invalid characters in name.');
     }
 
-    // 2. Blocklist Validation (Profanity/Security Fix)
+    // 1. PROFANITY & RESERVED LIST CHECK
+    if (isTextProfane(cleanName)) {
+        throw new HttpsError('invalid-argument', 'This name cannot be used (Inappropriate).');
+    }
+
     const lowerName = cleanName.toLowerCase();
-    const RESERVED_NAMES = ['admin', 'system', 'mod', 'moderator', 'gm', 'support', 'server', 'nigger'];
-    
-    // Check if name contains any reserved words
+    const RESERVED_NAMES = ['admin', 'system', 'mod', 'moderator', 'gm', 'support', 'server'];
     if (RESERVED_NAMES.some(reserved => lowerName.includes(reserved))) {
-        throw new HttpsError('invalid-argument', 'This name cannot be used.');
+        throw new HttpsError('invalid-argument', 'This name cannot be used (Reserved).');
     }
 
     const playerRef = db.collection('players').doc(uid);
@@ -506,10 +517,7 @@ exports.createCharacter = onCall(async (request) => {
     });
 });
 
-// 1. Add this to the TOP of functions/index.js
-const { getDatabase } = require('firebase-admin/database');
-
-// 2. Add this to the BOTTOM of functions/index.js
+// --- UPDATED CHAT (RTDB Optimized + Strict Regex) ---
 exports.sendChatMessage = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
     
@@ -518,34 +526,44 @@ exports.sendChatMessage = onCall(async (request) => {
         throw new HttpsError('invalid-argument', 'Invalid message.');
     }
 
-    const uid = request.auth.uid;
-    const playerRef = db.collection('players').doc(uid);
-    const now = Date.now();
-    
-    // 1. Fetch Player
-    const playerSnap = await playerRef.get();
-    if (!playerSnap.exists) throw new HttpsError('not-found', 'No character.');
-    const playerData = playerSnap.data();
+    // 1. CLEAN THE MESSAGE (Regex + Library)
+    const cleanText = cleanTextSecurely(text);
 
-    // 2. CHECK RATE LIMIT (Security Fix)
-    const lastChatTime = playerData.lastChatTime || 0;
-    // 2000ms = 2 seconds cooldown
+    const uid = request.auth.uid;
+    const now = Date.now();
+    const rtdb = getDatabase();
+
+    // 2. CHECK RATE LIMIT (IN RTDB)
+    const rateLimitRef = rtdb.ref(`chatRateLimits/${uid}`);
+    const rateLimitSnap = await rateLimitRef.once('value');
+    const lastChatTime = rateLimitSnap.val() || 0;
+
     if (now - lastChatTime < 2000) {
         throw new HttpsError('resource-exhausted', 'You are chatting too fast.');
     }
 
-    // 3. Write to Realtime Database
-    const rtdb = getDatabase();
-    await rtdb.ref('globalChat').push({
-        text: text,
+    // 3. FETCH PLAYER INFO
+    const playerRef = db.collection('players').doc(uid);
+    const playerSnap = await playerRef.get();
+    
+    if (!playerSnap.exists) throw new HttpsError('not-found', 'No character.');
+    const playerData = playerSnap.data();
+
+    // 4. WRITE TO RTDB (Message + Timestamp update)
+    const chatRef = rtdb.ref('globalChat');
+    const newMessageRef = chatRef.push();
+    
+    const updates = {};
+    updates[`globalChat/${newMessageRef.key}`] = {
+        text: cleanText,
         senderName: playerData.displayName,
         senderRealm: playerData.realmIndex,
         userId: uid,
         timestamp: now
-    });
+    };
+    updates[`chatRateLimits/${uid}`] = now;
 
-    // 4. Update Timestamp in Firestore
-    await playerRef.update({ lastChatTime: now });
+    await rtdb.ref().update(updates);
 
     return { success: true };
 });

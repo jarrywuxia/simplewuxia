@@ -7,6 +7,10 @@
     "chatRateLimits": {
       ".read": false, 
       ".write": false
+    },
+    "meditationState": {
+      ".read": false,
+      ".write": false
     }
   }
 }

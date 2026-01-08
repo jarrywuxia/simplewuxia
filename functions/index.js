@@ -88,40 +88,53 @@ const DEEP_MEDITATION_COST = 20;
 // --- 4. EXPORTED FUNCTIONS ---
 
 exports.meditate = onCall(async (request) => {
+    // 1. Auth Check
     if (!request.auth) throw new HttpsError('unauthenticated', 'You must be logged in.');
 
     const uid = request.auth.uid;
     const type = request.data.type || 'quick'; 
+    const now = Date.now();
+    
+    // --- COST SAVING CHECK (RTDB) ---
+    const rtdb = getDatabase();
+    const cooldownRef = rtdb.ref(`meditationState/${uid}`);
+    const cooldownSnap = await cooldownRef.once('value');
+    const cooldownData = cooldownSnap.val() || { unlockTime: 0 };
+
+    // If "Quick" meditation, check the timer BEFORE touching Firestore
+    if (type === 'quick') {
+        if (now < cooldownData.unlockTime) {
+            throw new HttpsError('resource-exhausted', 'Meditation is on cooldown.');
+        }
+    }
+
     const playerRef = db.collection('players').doc(uid);
 
     if (type !== 'quick' && type !== 'deep') {
         throw new HttpsError('invalid-argument', 'Invalid meditation type.');
     }
 
+    // --- EXPENSIVE LOGIC (FIRESTORE) ---
     return await db.runTransaction(async (transaction) => {
         const playerDoc = await transaction.get(playerRef);
         if (!playerDoc.exists) throw new HttpsError('not-found', 'Character not found.');
 
         const data = playerDoc.data();
-        const now = Date.now();
-
+        
+        // 2. APPLY PASSIVE REGEN
         const regenData = calculatePassiveRegen(data);
         let currentEnergy = regenData.energy;
         const newLastEnergyUpdate = regenData.lastEnergyUpdate;
 
-        if (type === 'quick') {
-            const lastTime = data.lastMeditationTime || 0;
-            const cooldown = (data.lastCooldownDuration || 5) * 1000; 
-            if (now - lastTime < cooldown - 500) {
-                throw new HttpsError('failed-precondition', 'Meditation is on cooldown.');
-            }
-        } else if (type === 'deep') {
+        // 3. Logic Checks (Deep Meditation Cost)
+        if (type === 'deep') {
             if (currentEnergy < DEEP_MEDITATION_COST) {
                 throw new HttpsError('failed-precondition', 'Not enough energy.');
             }
             currentEnergy -= DEEP_MEDITATION_COST;
         }
 
+        // 4. Generate Rewards
         let result;
         if (type === 'quick') {
             result = generateQuickMeditationReward(data);
@@ -129,6 +142,7 @@ exports.meditate = onCall(async (request) => {
             result = generateDeepMeditationReward(data);
         }
 
+        // 5. Inventory Logic
         let newInventory = data.inventory || [];
         if (result.item) {
             const itemIndex = newInventory.findIndex(item => item.id === result.item);
@@ -139,6 +153,7 @@ exports.meditate = onCall(async (request) => {
             }
         }
 
+        // 6. Leveling Logic
         let newXp = (data.experience || 0) + result.experience;
         let newStones = (data.spiritStones || 0) + result.spiritStones;
         let newRealmIndex = data.realmIndex || 0;
@@ -165,11 +180,16 @@ exports.meditate = onCall(async (request) => {
             }
         }
 
+        // 7. Calculate New Cooldown
+        const duration = (result.cooldown || 5) * 1000;
+        const newUnlockTime = now + duration;
+
+        // 8. Update Firestore
         transaction.update(playerRef, {
             experience: newXp,
             spiritStones: newStones,
-            energy: currentEnergy,
-            lastEnergyUpdate: newLastEnergyUpdate,
+            energy: currentEnergy, 
+            lastEnergyUpdate: newLastEnergyUpdate, 
             realmIndex: newRealmIndex,
             stageIndex: newStageIndex,
             unallocatedPoints: newPoints,
@@ -178,6 +198,10 @@ exports.meditate = onCall(async (request) => {
             lastMeditationTime: type === 'quick' ? now : data.lastMeditationTime,
             lastCooldownDuration: result.cooldown || 5 
         });
+
+        // 9. Update RTDB (For the cheap check next time)
+        // Note: We don't await this, we let it run in background to speed up response
+        cooldownRef.set({ unlockTime: newUnlockTime });
 
         return {
             success: true,

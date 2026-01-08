@@ -146,17 +146,58 @@ const calculateRewards = (event, playerData) => {
   return rewards;
 };
 
-// NEW: Helper to roll for loot drops
 const calculateLoot = (event) => {
   if (!event.rewards.loot) return null;
   
-  // Look through the list of possible items for this event
   for (const itemEntry of event.rewards.loot) {
     if (Math.random() < itemEntry.chance) {
-      return itemEntry.id; // Return the ID of the item found
+      return itemEntry.id; 
     }
   }
   return null;
+};
+
+// --- NEW: Passive Regeneration Logic ---
+exports.calculatePassiveRegen = (playerData) => {
+  const MAX_ENERGY = 100;
+  const REGEN_RATE_MINUTES = 5; // 1 Energy per 5 Minutes
+  
+  const now = Date.now();
+  // Default to 'now' if it's a new character with no timestamp
+  const lastUpdate = playerData.lastEnergyUpdate || now;
+  
+  const msDiff = now - lastUpdate;
+  const minutesPassed = msDiff / (1000 * 60);
+  
+  // How many full points of energy were gained?
+  const energyGained = Math.floor(minutesPassed / REGEN_RATE_MINUTES);
+  
+  if (energyGained > 0) {
+      let newEnergy = (playerData.energy || 0) + energyGained;
+      
+      // Cap at Max
+      if (newEnergy > MAX_ENERGY) {
+          newEnergy = MAX_ENERGY;
+          // If we hit max, reset the timer to now (so we don't bank "extra" time)
+          return { energy: newEnergy, lastEnergyUpdate: now };
+      }
+      
+      // Otherwise, we only advance the timer by the EXACT amount of energy gained.
+      // If 9 minutes passed (regaining 1 energy), we keep the 4 extra minutes "banked"
+      // for the next update.
+      const timeConsumed = energyGained * REGEN_RATE_MINUTES * 60 * 1000;
+      
+      return {
+          energy: newEnergy,
+          lastEnergyUpdate: lastUpdate + timeConsumed
+      };
+  }
+  
+  // No energy gained yet
+  return { 
+      energy: playerData.energy || 0, 
+      lastEnergyUpdate: lastUpdate 
+  };
 };
 
 // --- 3. EXPORTS (Public Functions) ---
@@ -171,7 +212,7 @@ exports.generateQuickMeditationReward = (playerData) => {
     message: event.message,
     eventId: event.id,
     cooldown: event.cooldown,
-    item: lootId // Include the item ID if one was found
+    item: lootId 
   };
 };
 
@@ -184,6 +225,6 @@ exports.generateDeepMeditationReward = (playerData) => {
     ...rewards,
     message: event.message,
     eventId: event.id,
-    item: lootId // Include the item ID if one was found
+    item: lootId 
   };
 };

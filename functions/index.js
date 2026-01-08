@@ -4,7 +4,11 @@ const admin = require("firebase-admin");
 const { getNewPlayerData } = require('./playerTemplate');
 
 // --- IMPORT THE NEW SYSTEM ---
-const { generateQuickMeditationReward, generateDeepMeditationReward } = require('./meditationSystem');
+const { 
+  generateQuickMeditationReward, 
+  generateDeepMeditationReward, 
+  calculatePassiveRegen 
+} = require('./meditationSystem');
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -26,39 +30,45 @@ const STAT_POINTS_PER_STAGE = 5;
 const DEEP_MEDITATION_COST = 20;
 
 exports.meditate = onCall(async (request) => {
-    if (!request.auth) {
-        throw new HttpsError('unauthenticated', 'You must be logged in.');
-    }
+    if (!request.auth) throw new HttpsError('unauthenticated', 'You must be logged in.');
 
     const uid = request.auth.uid;
     const type = request.data.type || 'quick'; 
     const playerRef = db.collection('players').doc(uid);
 
+    // 1. Validation (Input Type) - SECURITY FIX
+    if (type !== 'quick' && type !== 'deep') {
+        throw new HttpsError('invalid-argument', 'Invalid meditation type.');
+    }
+
     return await db.runTransaction(async (transaction) => {
         const playerDoc = await transaction.get(playerRef);
-        
-        if (!playerDoc.exists) {
-            throw new HttpsError('not-found', 'Character not found.');
-        }
+        if (!playerDoc.exists) throw new HttpsError('not-found', 'Character not found.');
 
         const data = playerDoc.data();
         const now = Date.now();
 
-        // 1. Validation (Cooldown & Energy)
+        // 2. APPLY PASSIVE REGEN (Fixes Energy being stuck)
+        const regenData = calculatePassiveRegen(data);
+        let currentEnergy = regenData.energy;
+        const newLastEnergyUpdate = regenData.lastEnergyUpdate;
+
+        // 3. Logic Checks
         if (type === 'quick') {
             const lastTime = data.lastMeditationTime || 0;
             const cooldown = (data.lastCooldownDuration || 5) * 1000; 
-            
             if (now - lastTime < cooldown - 500) {
                 throw new HttpsError('failed-precondition', 'Meditation is on cooldown.');
             }
         } else if (type === 'deep') {
-            if (data.energy < DEEP_MEDITATION_COST) {
+            if (currentEnergy < DEEP_MEDITATION_COST) {
                 throw new HttpsError('failed-precondition', 'Not enough energy.');
             }
+            // Deduct cost from the REGENERATED amount
+            currentEnergy -= DEEP_MEDITATION_COST;
         }
 
-        // 2. Generate Rewards
+        // 4. Generate Rewards
         let result;
         if (type === 'quick') {
             result = generateQuickMeditationReward(data);
@@ -66,37 +76,25 @@ exports.meditate = onCall(async (request) => {
             result = generateDeepMeditationReward(data);
         }
 
-        // 3. Process Inventory (Stacking Logic)
+        // 5. Inventory Logic
         let newInventory = data.inventory || [];
         if (result.item) {
-            // Check if item already exists in inventory
             const itemIndex = newInventory.findIndex(item => item.id === result.item);
-            
             if (itemIndex > -1) {
-                // Stack it
                 newInventory[itemIndex].quantity += 1;
             } else {
-                // Add new slot
-                newInventory.push({
-                    id: result.item,
-                    quantity: 1
-                });
+                newInventory.push({ id: result.item, quantity: 1 });
             }
         }
 
-        // 4. Calculate Stats & Leveling
+        // 6. Leveling Logic
         let newXp = (data.experience || 0) + result.experience;
         let newStones = (data.spiritStones || 0) + result.spiritStones;
-        let newEnergy = data.energy;
         let newRealmIndex = data.realmIndex || 0;
         let newStageIndex = data.stageIndex || 0;
         let newPoints = data.unallocatedPoints || 0;
         let newXpNeeded = data.experienceNeeded || XP_PER_STAGE;
         let extraMessage = "";
-
-        if (type === 'deep') {
-            newEnergy -= DEEP_MEDITATION_COST;
-        }
 
         if (newXp >= newXpNeeded) {
             const currentRealm = REALMS[newRealmIndex];
@@ -116,27 +114,27 @@ exports.meditate = onCall(async (request) => {
             }
         }
 
-        // 5. Update Database
+        // 7. Update Database
         transaction.update(playerRef, {
             experience: newXp,
             spiritStones: newStones,
-            energy: newEnergy,
+            energy: currentEnergy, // Save the calculated energy
+            lastEnergyUpdate: newLastEnergyUpdate, // Save the regen timestamp
             realmIndex: newRealmIndex,
             stageIndex: newStageIndex,
             unallocatedPoints: newPoints,
             experienceNeeded: newXpNeeded,
-            inventory: newInventory, // Save the updated bag
+            inventory: newInventory,
             lastMeditationTime: type === 'quick' ? now : data.lastMeditationTime,
             lastCooldownDuration: result.cooldown || 5 
         });
 
-        // 6. Return Data to Frontend
         return {
             success: true,
             rewards: {
                 experience: result.experience,
                 spiritStones: result.spiritStones,
-                item: result.item // Pass the ID back so UI can show the loot
+                item: result.item
             },
             message: result.message + extraMessage,
             cooldown: result.cooldown || 0
@@ -190,13 +188,10 @@ const MASTER_ITEMS = require('./masterItems');
 exports.useItem = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
 
-    // 1. Accept quantity, default to 1
     const { itemId, quantity } = request.data; 
     const qtyToUse = parseInt(quantity) || 1;
 
-    if (qtyToUse < 1) {
-        throw new HttpsError('invalid-argument', 'Quantity must be at least 1.');
-    }
+    if (qtyToUse < 1) throw new HttpsError('invalid-argument', 'Quantity must be at least 1.');
 
     const uid = request.auth.uid;
     const playerRef = db.collection('players').doc(uid);
@@ -207,13 +202,18 @@ exports.useItem = onCall(async (request) => {
 
         const data = playerDoc.data();
         
+        // 1. CALCULATE REGEN FIRST
+        const regenData = calculatePassiveRegen(data);
+        let currentEnergy = regenData.energy;
+        const newLastEnergyUpdate = regenData.lastEnergyUpdate;
+        
         // 2. Validate Item
         const itemDef = MASTER_ITEMS[itemId];
         if (!itemDef || itemDef.type !== 'consumable') {
             throw new HttpsError('invalid-argument', 'This item cannot be consumed.');
         }
 
-        // 3. Check Ownership & Quantity
+        // 3. Check Inventory
         let inventory = data.inventory || [];
         const itemIndex = inventory.findIndex(i => i.id === itemId);
         
@@ -221,29 +221,28 @@ exports.useItem = onCall(async (request) => {
             throw new HttpsError('failed-precondition', 'Not enough items.');
         }
 
-        // 4. Apply the Effect (Multiplied by qtyToUse)
-        let updateData = {};
+        // 4. Apply Effect
         if (itemDef.effect.type === 'restore_energy') {
             const maxEnergy = 100;
             const energyGain = itemDef.effect.value * qtyToUse;
-            updateData.energy = Math.min(maxEnergy, (data.energy || 0) + energyGain);
+            // Add pill energy to REGENERATED energy
+            currentEnergy = Math.min(maxEnergy, currentEnergy + energyGain);
         }
 
-        // 5. Update Inventory
+        // 5. Deduct Item
         if (inventory[itemIndex].quantity > qtyToUse) {
             inventory[itemIndex].quantity -= qtyToUse;
         } else {
-            // Remove the item entirely if using all (or somehow more)
             inventory.splice(itemIndex, 1);
         }
-        updateData.inventory = inventory;
 
-        transaction.update(playerRef, updateData);
+        transaction.update(playerRef, {
+            inventory: inventory,
+            energy: currentEnergy,
+            lastEnergyUpdate: newLastEnergyUpdate
+        });
         
-        return { 
-            success: true, 
-            message: `Consumed ${qtyToUse}x ${itemDef.name}` 
-        };
+        return { success: true, message: `Consumed ${qtyToUse}x ${itemDef.name}` };
     });
 });
 
@@ -354,16 +353,20 @@ exports.unequipItem = onCall(async (request) => {
     });
 });
 
-// Add this to your exports
 exports.equipTechnique = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
     
-    const { slotIndex, techniqueId } = request.data;
+    // 1. Sanitize Input
+    const { techniqueId } = request.data;
+    // Force integer conversion to prevent string/float injection
+    const slotIndex = parseInt(request.data.slotIndex, 10);
+
     const uid = request.auth.uid;
     const playerRef = db.collection('players').doc(uid);
 
-    // Validation
-    if (slotIndex < 0 || slotIndex > 4) {
+    // 2. Validate Input
+    // Check if NaN (not a number) OR out of bounds
+    if (isNaN(slotIndex) || slotIndex < 0 || slotIndex > 4) {
         throw new HttpsError('invalid-argument', 'Invalid slot index (0-4).');
     }
 
@@ -377,26 +380,26 @@ exports.equipTechnique = onCall(async (request) => {
 
         // If equipping (not clearing)
         if (techniqueId) {
-            // 1. Do they know it?
+            // A. Do they know it?
             if (!learned.includes(techniqueId)) {
                 throw new HttpsError('failed-precondition', 'You have not learned this technique.');
             }
-            // 2. Is it already equipped in another slot?
+            // B. Is it already equipped in another slot?
             const existingIndex = equipped.indexOf(techniqueId);
             if (existingIndex > -1 && existingIndex !== slotIndex) {
-                // Swap or Clear? Let's just clear the old slot for simplicity
+                // Clear the old slot so we don't have duplicates
                 equipped[existingIndex] = null;
             }
         }
 
-        // Set the new slot
-        equipped[slotIndex] = techniqueId;
+        // Set the new slot (ensure it's null if unequipping)
+        equipped[slotIndex] = techniqueId || null;
 
         transaction.update(playerRef, { equippedTechniques: equipped });
 
         return { success: true, message: 'Technique slot updated.' };
     });
-}); 
+});
 
 // ... existing imports
 const { simulateCombat } = require('./combat/simulator');
@@ -418,22 +421,33 @@ exports.pveFight = onCall(async (request) => {
 
         if (!enemyData) throw new HttpsError('not-found', 'Enemy not found.');
 
-        // 1. Run Simulation
-        const result = simulateCombat(playerData, enemyData);
+        // 1. CALCULATE REGEN & CHECK COST (Security Fix)
+        const regenData = calculatePassiveRegen(playerData);
+        let currentEnergy = regenData.energy;
+        const ENERGY_COST = 5;
 
-        // 2. Apply Results
-        if (result.winner === 'player') {
-             const newXp = (playerData.experience || 0) + (result.rewards.exp || 0);
-             const newStones = (playerData.spiritStones || 0) + (result.rewards.stones || 0);
-             
-             // Simple update (You can reuse your existing leveling logic here later)
-             transaction.update(playerRef, {
-                 experience: newXp,
-                 spiritStones: newStones
-             });
+        if (currentEnergy < ENERGY_COST) {
+            throw new HttpsError('failed-precondition', 'Not enough energy to fight (Cost: 5).');
         }
 
-        // 3. Return Log to Client
+        // 2. Run Simulation
+        const result = simulateCombat(playerData, enemyData);
+
+        // 3. Prepare Updates
+        // Deduct energy immediately
+        let updates = {
+            energy: currentEnergy - ENERGY_COST,
+            lastEnergyUpdate: regenData.lastEnergyUpdate
+        };
+
+        if (result.winner === 'player') {
+             updates.experience = (playerData.experience || 0) + (result.rewards.exp || 0);
+             updates.spiritStones = (playerData.spiritStones || 0) + (result.rewards.stones || 0);
+        }
+
+        // 4. Update DB
+        transaction.update(playerRef, updates);
+
         return {
             success: true,
             winner: result.winner,
@@ -446,16 +460,13 @@ exports.pveFight = onCall(async (request) => {
 // functions/index.js (Add to bottom)
 
 exports.createCharacter = onCall(async (request) => {
-    // 1. Auth Check
-    if (!request.auth) {
-        throw new HttpsError('unauthenticated', 'You must be logged in.');
-    }
+    if (!request.auth) throw new HttpsError('unauthenticated', 'You must be logged in.');
 
     const uid = request.auth.uid;
     const { displayName } = request.data;
     const cleanName = displayName ? displayName.trim() : '';
 
-    // 2. Validation (Server Side is the only one that matters)
+    // 1. Length/Char Validation
     if (!cleanName || cleanName.length < 3 || cleanName.length > 20) {
         throw new HttpsError('invalid-argument', 'Name must be 3-20 characters.');
     }
@@ -463,27 +474,27 @@ exports.createCharacter = onCall(async (request) => {
         throw new HttpsError('invalid-argument', 'Invalid characters in name.');
     }
 
+    // 2. Blocklist Validation (Profanity/Security Fix)
+    const lowerName = cleanName.toLowerCase();
+    const RESERVED_NAMES = ['admin', 'system', 'mod', 'moderator', 'gm', 'support', 'server', 'nigger'];
+    
+    // Check if name contains any reserved words
+    if (RESERVED_NAMES.some(reserved => lowerName.includes(reserved))) {
+        throw new HttpsError('invalid-argument', 'This name cannot be used.');
+    }
+
     const playerRef = db.collection('players').doc(uid);
-    const usernameRef = db.collection('usernames').doc(cleanName.toLowerCase());
+    const usernameRef = db.collection('usernames').doc(lowerName);
 
-    // 3. Transaction (To handle Name Claiming + Player Creation atomically)
     return await db.runTransaction(async (transaction) => {
-        // Check if player already exists
         const playerDoc = await transaction.get(playerRef);
-        if (playerDoc.exists) {
-            throw new HttpsError('already-exists', 'Character already exists.');
-        }
+        if (playerDoc.exists) throw new HttpsError('already-exists', 'Character already exists.');
 
-        // Check if username is taken
         const usernameDoc = await transaction.get(usernameRef);
-        if (usernameDoc.exists) {
-            throw new HttpsError('already-exists', 'This name is taken.');
-        }
+        if (usernameDoc.exists) throw new HttpsError('already-exists', 'This name is taken.');
 
-        // 4. Generate SECURE Data
         const newPlayerData = getNewPlayerData(uid, cleanName);
 
-        // 5. Write to DB
         transaction.set(playerRef, newPlayerData);
         transaction.set(usernameRef, {
             userId: uid,
@@ -503,27 +514,38 @@ exports.sendChatMessage = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
     
     const text = request.data.text;
-    // Basic validation
     if (!text || typeof text !== 'string' || text.length > 150) {
         throw new HttpsError('invalid-argument', 'Invalid message.');
     }
 
     const uid = request.auth.uid;
+    const playerRef = db.collection('players').doc(uid);
+    const now = Date.now();
     
-    // FETCH REAL NAME FROM DB (The Security Fix)
-    const playerSnap = await db.collection('players').doc(uid).get();
+    // 1. Fetch Player
+    const playerSnap = await playerRef.get();
     if (!playerSnap.exists) throw new HttpsError('not-found', 'No character.');
     const playerData = playerSnap.data();
 
-    // Write to Realtime Database
+    // 2. CHECK RATE LIMIT (Security Fix)
+    const lastChatTime = playerData.lastChatTime || 0;
+    // 2000ms = 2 seconds cooldown
+    if (now - lastChatTime < 2000) {
+        throw new HttpsError('resource-exhausted', 'You are chatting too fast.');
+    }
+
+    // 3. Write to Realtime Database
     const rtdb = getDatabase();
     await rtdb.ref('globalChat').push({
         text: text,
-        senderName: playerData.displayName, // We use the DB name, not user input
+        senderName: playerData.displayName,
         senderRealm: playerData.realmIndex,
         userId: uid,
-        timestamp: Date.now()
+        timestamp: now
     });
+
+    // 4. Update Timestamp in Firestore
+    await playerRef.update({ lastChatTime: now });
 
     return { success: true };
 });

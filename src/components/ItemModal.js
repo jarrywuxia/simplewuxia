@@ -1,17 +1,21 @@
 import React from 'react';
+import { getRarityStyles } from '../utils/rarity';
 
 function ItemModal({ item, onClose, actions }) {
   if (!item) return null;
+
+  // Get styles
+  const styles = getRarityStyles(item.rarity);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       
-      <div className="relative bg-paper border-2 border-border w-full max-w-sm shadow-2xl animate-fadeIn">
+      <div className={`relative bg-paper border-2 ${styles.border} w-full max-w-sm shadow-2xl animate-fadeIn`}>
         <div className="p-6">
           <div className="flex flex-col items-center text-center mb-6">
             {/* ICON DISPLAY */}
-            <div className="w-20 h-20 bg-white border-2 border-border flex items-center justify-center mb-4 shadow-inner overflow-hidden p-2">
+            <div className={`w-20 h-20 bg-white border-2 ${styles.border} flex items-center justify-center mb-4 shadow-inner overflow-hidden p-2`}>
               {item.icon ? (
                 <img 
                   src={item.icon} 
@@ -24,10 +28,10 @@ function ItemModal({ item, onClose, actions }) {
               )}
             </div>
             
-            <h2 className="text-2xl font-bold font-serif text-ink uppercase tracking-tighter leading-none">
+            <h2 className={`text-2xl font-bold font-serif text-ink uppercase tracking-tighter leading-none ${styles.text}`}>
               {item.name}
             </h2>
-            <span className="text-[10px] font-bold text-accent uppercase tracking-[0.2em] mt-2 opacity-70">
+            <span className={`text-[10px] font-bold text-white px-2 py-0.5 mt-2 uppercase tracking-[0.2em] rounded-sm ${styles.bg.replace('bg-', 'bg-').replace('50', '600')}`}>
               {item.rarity} {item.type}
             </span>
           </div>

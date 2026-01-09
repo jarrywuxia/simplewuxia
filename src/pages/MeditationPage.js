@@ -3,6 +3,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
 import { DEEP_MEDITATION_COST } from '../gameData';
 import { getItem } from '../data/items'; 
+import { getRarityStyles } from '../utils/rarity';
 import FloatingReward from '../components/FloatingReward';
 import ItemModal from '../components/ItemModal'; 
 
@@ -144,32 +145,38 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
         </div>
       </div>
 
-      {recentLoot && (
-        <div 
-          onClick={() => setSelectedItem(recentLoot)}
-          className="bg-amber-50 border-2 border-amber-900 p-3 shadow-lg flex items-center justify-between cursor-pointer animate-fadeIn hover:shadow-xl transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-50 p-1 border border-amber-900 shadow-inner flex items-center justify-center overflow-hidden">
-              {recentLoot.icon ? (
-                <img 
-                  src={recentLoot.icon} 
-                  alt="" 
-                  className="w-full h-full object-contain" 
-                  style={{ imageRendering: 'pixelated' }} 
-                />
-              ) : (
-                <span className="text-xl">{recentLoot.type === 'weapon' ? '⚔️' : '💊'}</span>
-              )}
+      {recentLoot && (() => {
+        const styles = getRarityStyles(recentLoot.rarity);
+        return (
+          <div 
+            onClick={() => setSelectedItem(recentLoot)}
+            className={`
+              border-2 p-3 shadow-lg flex items-center justify-between cursor-pointer animate-fadeIn hover:shadow-xl transition-all
+              ${styles.border} ${styles.bg}
+            `}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 bg-white p-1 border ${styles.border} shadow-inner flex items-center justify-center overflow-hidden`}>
+                {recentLoot.icon ? (
+                  <img 
+                    src={recentLoot.icon} 
+                    alt="" 
+                    className="w-full h-full object-contain" 
+                    style={{ imageRendering: 'pixelated' }} 
+                  />
+                ) : (
+                  <span className="text-xl">🎁</span>
+                )}
+              </div>
+              <div>
+                <p className={`text-[10px] font-bold uppercase opacity-70 ${styles.text}`}>Found {recentLoot.rarity} Item!</p>
+                <h4 className={`font-bold font-serif leading-none ${styles.text}`}>{recentLoot.name}</h4>
+              </div>
             </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase opacity-70 text-amber-900">Found Item!</p>
-              <h4 className="font-bold font-serif leading-none text-amber-950">{recentLoot.name}</h4>
-            </div>
+            <span className={`text-[9px] font-bold border px-2 py-1 uppercase tracking-tighter ${styles.border} ${styles.text}`}>View</span>
           </div>
-          <span className="text-[9px] font-bold border border-amber-900/40 px-2 py-1 uppercase tracking-tighter text-amber-900">View Info</span>
-        </div>
-      )}
+        );
+      })()}
 
       <div className="space-y-3">
         <div>

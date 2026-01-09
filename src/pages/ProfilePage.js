@@ -1,5 +1,6 @@
 import React from 'react';
 import { getItem } from '../data/items';
+import { getRarityStyles } from '../utils/rarity';
 
 // Added 'evasion' to the list
 const STAT_ORDER = ['strength', 'defense', 'qi', 'maxHp', 'evasion'];
@@ -95,14 +96,18 @@ function ProfilePage({ playerData, onAllocateStat, onItemClick, actionLoading })
             {['weapon', 'armor', 'helmet', 'boots', 'ring', 'amulet'].map(slot => {
               const equippedItemId = playerData.equipment?.[slot];
               const itemData = equippedItemId ? getItem(equippedItemId) : null;
+              const styles = itemData ? getRarityStyles(itemData.rarity) : null;
 
               return (
                 <div 
                   key={slot} 
                   className={`
-                    aspect-square border border-dashed border-border flex flex-col items-center justify-center p-2 
-                    bg-stone-50/50 relative group cursor-pointer transition-colors
-                    ${itemData ? 'border-solid border-accent/30 bg-white' : 'hover:bg-stone-100'}
+                    aspect-square border flex flex-col items-center justify-center p-2 
+                    relative group cursor-pointer transition-colors
+                    ${itemData 
+                      ? `border-solid ${styles.border} ${styles.bg}` 
+                      : 'border-dashed border-border bg-stone-50/50 hover:bg-stone-100'
+                    }
                   `}
                   onClick={() => itemData && onItemClick(itemData)} 
                 >

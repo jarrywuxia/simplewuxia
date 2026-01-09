@@ -3,6 +3,7 @@ import { rtdb, functions } from '../firebase';
 import { httpsCallable } from 'firebase/functions';
 import { ref, query, limitToLast, onValue } from 'firebase/database';
 import { getItem } from '../data/items';
+import { getRarityStyles } from '../utils/rarity';
 
 function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
   const [messages, setMessages] = useState([]);
@@ -97,14 +98,25 @@ function ChatBox({ playerData, onViewItem, draftMessage, onDraftConsumed }) {
         const itemDef = getItem(itemId);
         
         if (!itemDef) {
-           return <span key={i} className="text-gray-400 text-xs">[Unknown Item]</span>;
+            return <span key={i} className="text-gray-400 text-xs">[Unknown Item]</span>;
         }
+
+        // Get styles
+        const styles = getRarityStyles(itemDef.rarity);
 
         return (
           <button
             key={i}
             onClick={() => onViewItem && onViewItem(itemDef)}
-            className="inline-flex items-center gap-1.5 text-amber-700 font-bold hover:text-amber-900 cursor-pointer bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 text-xs mx-1 align-text-bottom transition-colors shadow-sm"
+            // CHANGE: Dynamic background, text, and border classes
+            className={`
+              inline-flex items-center gap-1.5 
+              ${styles.text} hover:brightness-75
+              ${styles.bg} hover:${styles.bg.replace('50', '100')}
+              border ${styles.border}
+              cursor-pointer px-1.5 py-0.5 rounded text-xs mx-1 align-text-bottom transition-colors shadow-sm
+              font-bold
+            `}
             title="Click to view details"
           >
             {itemDef.icon && (

@@ -5,6 +5,7 @@ const { createCharacter, allocateStat } = require('./features/character');
 const { useItem, equipItem, unequipItem } = require('./features/inventory');
 const { equipTechnique, pveFight } = require('./features/combat');
 const { sendChatMessage, cleanupChat } = require('./features/chat');
+const { debugGiveItem } = require('./features/debug'); // Add this
 
 // --- EXPORT FUNCTIONS ---
 
@@ -27,3 +28,6 @@ exports.pveFight = pveFight;
 // Chat
 exports.sendChatMessage = sendChatMessage;
 exports.cleanupChat = cleanupChat;
+
+// Debug
+exports.debugGiveItem = debugGiveItem;

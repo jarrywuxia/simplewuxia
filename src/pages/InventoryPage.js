@@ -48,6 +48,7 @@ function InventoryPage({ inventory, onItemClick }) {
             <option value="WEAPON">Weapons</option>
             <option value="ARMOR">Armor</option>
             <option value="CONSUMABLE">Pills</option>
+            <option value="MANUAL">Books</option>
           </select>
         </div>
       </div>

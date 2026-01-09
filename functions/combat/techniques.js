@@ -70,6 +70,18 @@ const TECHNIQUE_REGISTRY = {
     qiCostPct: 0,
     effect: { type: 'restore_qi', value: 25 },
     initialCharge: 0
+  },
+  'gale_palm': {
+    id: 'gale_palm',
+    name: 'Gale Palm',
+    type: 'offense',
+    cooldown: 4,
+    qiCostBase: 10,
+    qiCostPct: 0.05,
+    power: 110,
+    accuracy: 95,
+    scalingStat: 'qi', // Scales with Qi instead of Strength!
+    initialCharge: 0
   }
 };
 

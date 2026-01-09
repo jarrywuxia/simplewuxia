@@ -57,6 +57,15 @@ const MASTER_ITEMS = {
     // Pure Evasion item
     stats: { defense: 2, evasion: 3 }, 
     value: 100
+  },
+  // --- MANUALS / SCROLLS ---
+  'gale_palm_manual': {
+    name: 'Gale Palm Scroll',
+    type: 'manual', // New Type
+    // The effect tells the system what to do. 
+    // In the future, you could change type to 'gain_xp' for skill books
+    effect: { type: 'learn_technique', value: 'gale_palm' }, 
+    value: 150
   }
 };
 

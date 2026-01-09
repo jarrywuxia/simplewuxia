@@ -5,6 +5,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import Login from './login';
 import CharacterCreation from './CharacterCreation';
 import Game from './pages/Game';
+import { useDebugConsole } from './utils/debug';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -40,6 +41,9 @@ function App() {
       setPlayerData(playerDoc.data());
     }
   };
+
+  // Activate debug console
+  useDebugConsole(handleCharacterCreated);
 
   // Loading state
   if (loading) {

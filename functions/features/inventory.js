@@ -29,15 +29,20 @@ exports.useItem = onCall(async (request) => {
 
         const data = playerDoc.data();
         
+        // 1. Handle Passive Regen
         const regenData = calculatePassiveRegen(data);
         let currentEnergy = regenData.energy;
         const newLastEnergyUpdate = regenData.lastEnergyUpdate;
         
         const itemDef = MASTER_ITEMS[itemId];
-        if (!itemDef || itemDef.type !== 'consumable') {
-            throw new HttpsError('invalid-argument', 'This item cannot be consumed.');
+
+        // 2. Validate Item Type (Now allows 'manual')
+        const ALLOWED_TYPES = ['consumable', 'manual'];
+        if (!itemDef || !ALLOWED_TYPES.includes(itemDef.type)) {
+            throw new HttpsError('invalid-argument', 'This item cannot be used.');
         }
 
+        // 3. Check Inventory Quantity
         let inventory = data.inventory || [];
         const itemIndex = inventory.findIndex(i => i.id === itemId);
         
@@ -45,25 +50,55 @@ exports.useItem = onCall(async (request) => {
             throw new HttpsError('failed-precondition', 'Not enough items.');
         }
 
-        if (itemDef.effect.type === 'restore_energy') {
+        // 4. Handle Effects
+        let successMessage = '';
+        let actualQtyUsed = qtyToUse;
+        let newLearnedTechniques = null;
+
+        // A. Manuals / Technique Learning
+        if (itemDef.type === 'manual' && itemDef.effect.type === 'learn_technique') {
+            actualQtyUsed = 1; // Always use exactly 1 book regardless of request
+            const learned = data.learnedTechniques || [];
+            const techId = itemDef.effect.value;
+
+            if (learned.includes(techId)) {
+                throw new HttpsError('failed-precondition', 'You have already learned this technique.');
+            }
+
+            // Add technique to list
+            newLearnedTechniques = [...learned, techId];
+            successMessage = `You studied the ${itemDef.name} and learned a new technique!`;
+        }
+        // B. Energy Consumables
+        else if (itemDef.effect.type === 'restore_energy') {
             const maxEnergy = 100;
             const energyGain = itemDef.effect.value * qtyToUse;
             currentEnergy = Math.min(maxEnergy, currentEnergy + energyGain);
+            successMessage = `Consumed ${qtyToUse}x ${itemDef.name}`;
         }
 
-        if (inventory[itemIndex].quantity > qtyToUse) {
-            inventory[itemIndex].quantity -= qtyToUse;
+        // 5. Remove Items from Inventory
+        if (inventory[itemIndex].quantity > actualQtyUsed) {
+            inventory[itemIndex].quantity -= actualQtyUsed;
         } else {
             inventory.splice(itemIndex, 1);
         }
 
-        transaction.update(playerRef, {
+        // 6. Prepare Updates
+        const updates = {
             inventory: inventory,
             energy: currentEnergy,
             lastEnergyUpdate: newLastEnergyUpdate
-        });
+        };
+
+        // Only update learnedTechniques if it changed
+        if (newLearnedTechniques) {
+            updates.learnedTechniques = newLearnedTechniques;
+        }
+
+        transaction.update(playerRef, updates);
         
-        return { success: true, message: `Consumed ${qtyToUse}x ${itemDef.name}` };
+        return { success: true, message: successMessage };
     });
 });
 

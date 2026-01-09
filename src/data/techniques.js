@@ -67,6 +67,18 @@ export const TECHNIQUE_REGISTRY = {
     qiCostPct: 0, 
     effect: { type: 'restore_qi', value: 25 },
     initialCharge: 0
+  },
+  'gale_palm': {
+    id: 'gale_palm',
+    name: 'Gale Palm',
+    description: 'Strike with wind-infused Qi. 110% Qi Dmg. High Accuracy.',
+    type: TECH_TYPES.OFFENSE,
+    icon: '/assets/icons/techniques/SODA_Icon_System_Misc_Gale.png',
+    cooldown: 4,
+    qiCostBase: 10,
+    qiCostPct: 0.05,
+    power: 110,
+    accuracy: 95
   }
 };
 

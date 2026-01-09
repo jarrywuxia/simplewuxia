@@ -5,6 +5,7 @@ export const ITEM_TYPES = {
   ARMOR: 'armor',
   BOOTS: 'boots', // Added Boots category
   CONSUMABLE: 'consumable',
+  MANUAL: 'manual',
   MATERIAL: 'material'
 };
 
@@ -84,6 +85,16 @@ export const itemRegistry = {
     icon: '/assets/icons/items/consumables/SODA_Icon_Orbs_Orb3.png',
     onUse: { restoreEnergy: 20 },
     rarity: 'common'
+  },
+
+  // --- MANUALS ---
+  'gale_palm_manual': {
+    id: 'gale_palm_manual',
+    name: 'Gale Palm Manual',
+    description: 'An old manual detailing how to manipulate Qi into wind.',
+    type: ITEM_TYPES.MANUAL,
+    icon: '/assets/icons/items/consumables/SODA_Icon_Books_Paper_Book1.png',
+    rarity: 'rare'
   }
 };
 

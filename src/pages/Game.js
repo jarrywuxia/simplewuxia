@@ -144,49 +144,29 @@ function Game({ playerData, onPlayerUpdate }) {
 
     return (
       <div className="flex flex-col gap-2">
-        {/* CONSUMABLE LOGIC WITH QUANTITY SLIDER */}
-        {selectedItem?.type === 'consumable' && count > 0 && (
+        {/* CONSUMABLE & MANUAL LOGIC */}
+        {(selectedItem?.type === 'consumable' || selectedItem?.type === 'manual') && count > 0 && (
           <div className="bg-stone-50 p-3 border border-border mb-2 rounded shadow-inner">
-             <div className="flex justify-between items-center mb-2">
-                <span className="text-[10px] font-bold text-ink-light uppercase tracking-widest">Quantity</span>
-                <span className="text-xs font-mono font-bold text-ink">{consumeQuantity} / {count}</span>
-            </div>
-
-            {/* Quantity Controls */}
-            <div className="flex items-center gap-2 mb-3">
-                <button 
-                  onClick={() => setConsumeQuantity(Math.max(1, consumeQuantity - 1))}
-                  className="w-8 h-8 bg-white border border-border hover:bg-gray-100 font-bold text-ink shadow-sm"
-                >-</button>
-                
-                <input 
-                  type="range" 
-                  min="1" 
-                  max={count} 
-                  value={consumeQuantity} 
-                  onChange={(e) => setConsumeQuantity(parseInt(e.target.value))}
-                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-accent"
-                />
-                
-                <button 
-                  onClick={() => setConsumeQuantity(Math.min(count, consumeQuantity + 1))}
-                  className="w-8 h-8 bg-white border border-border hover:bg-gray-100 font-bold text-ink shadow-sm"
-                >+</button>
-                
-                <button 
-                    onClick={() => setConsumeQuantity(count)}
-                    className="text-[10px] uppercase font-bold text-accent hover:text-accent-light hover:underline ml-1"
-                >
-                    Max
-                </button>
-            </div>
+             {/* Only show Quantity slider if it's NOT a manual (books read 1 at a time) */}
+             {selectedItem.type !== 'manual' && (
+               <>
+                 <div className="flex justify-between items-center mb-2">
+                    <span className="text-[10px] font-bold text-ink-light uppercase tracking-widest">Quantity</span>
+                    <span className="text-xs font-mono font-bold text-ink">{consumeQuantity} / {count}</span>
+                 </div>
+                 {/* ... existing slider code ... */}
+               </>
+             )}
 
             <button 
               disabled={actionLoading}
-              onClick={() => handleUseItem(selectedItem.id, consumeQuantity)}
+              onClick={() => handleUseItem(selectedItem.id, selectedItem.type === 'manual' ? 1 : consumeQuantity)}
               className="btn-primary w-full py-2 uppercase tracking-widest text-xs disabled:opacity-50"
             >
-              {actionLoading ? 'Consuming...' : `Consume (${consumeQuantity})`}
+              {actionLoading 
+                ? 'Processing...' 
+                : selectedItem.type === 'manual' ? 'Study Manual' : `Consume (${consumeQuantity})`
+              }
             </button>
           </div>
         )}

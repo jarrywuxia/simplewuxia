@@ -98,7 +98,11 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
 
     } catch (error) {
       console.error("Meditation error:", error);
-      if (error.code === 'failed-precondition') {
+      
+      // Error handling fix included here
+      if (error.code === 'resource-exhausted') {
+        displayMessage("You must rest a moment before meditating again.");
+      } else if (error.code === 'failed-precondition') {
         displayMessage("You cannot meditate right now.");
       } else {
         displayMessage("A mysterious force disrupts your cultivation... (Server Error)");
@@ -119,29 +123,46 @@ function MeditationPage({ playerData, onPlayerUpdate }) {
 
       <ItemModal item={selectedItem} onClose={() => setSelectedItem(null)} />
 
-      <div className="card flex flex-col justify-center items-center text-center p-6 bg-gradient-to-br from-white to-gray-50">
-        <p className="text-ink-light italic text-sm mb-3">You meditate...</p>
-        <div className="w-full flex items-center justify-center">
-          {currentMessage ? (
-            <p key={messageId} className="text-ink font-serif text-lg leading-relaxed">
-              {currentMessage.split(' ').map((word, index) => (
-                <span
-                  key={index}
-                  className="inline-block mr-1"
-                  style={{
-                    opacity: displayedWords.length > index ? 1 : 0,
-                    transition: 'opacity 0.5s ease-in'
-                  }}
-                >
-                  {word}
-                </span>
-              ))}
-            </p>
-          ) : (
-            <p className="text-ink-light italic">
-              Focus your mind and cultivate your spirit...
-            </p>
-          )}
+      {/* --- SCENIC DISPLAY WITH ORIGINAL TEXT --- */}
+      <div className="relative w-full h-64 md:h-80 rounded shadow-md border-2 border-border overflow-hidden bg-white">
+        
+        {/* Background Image (Static) */}
+        <img 
+          src="/assets/backgrounds/meditation_bg.png" 
+          alt="Meditation Landscape" 
+          className="absolute inset-0 w-full h-full object-cover opacity-90"
+        />
+
+        {/* Gradient Overlay (Fade to Paper color) */}
+        <div className="absolute inset-0 bg-gradient-to-t from-paper via-paper/70 to-transparent" />
+
+        {/* Text Content (Original Styles Preserved) */}
+        <div className="relative z-10 h-full flex flex-col justify-end items-center p-6 text-center pb-8">
+          
+          <p className="text-ink-light italic text-sm mb-3">You meditate...</p>
+          
+          <div className="w-full flex items-center justify-center min-h-[3rem]">
+            {currentMessage ? (
+              <p key={messageId} className="text-ink font-serif text-lg leading-relaxed">
+                {currentMessage.split(' ').map((word, index) => (
+                  <span
+                    key={index}
+                    className="inline-block mr-1"
+                    style={{
+                      opacity: displayedWords.length > index ? 1 : 0,
+                      transition: 'opacity 0.5s ease-in'
+                    }}
+                  >
+                    {word}
+                  </span>
+                ))}
+              </p>
+            ) : (
+              <p className="text-ink-light italic">
+                Focus your mind and cultivate your spirit...
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

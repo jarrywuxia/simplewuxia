@@ -10,6 +10,7 @@ exports.meditate = onCall(async (request) => {
     const type = request.data.type || 'quick'; 
     const now = Date.now();
     
+    // Check cooldown from Realtime Database (only matters for quick meditation)
     const cooldownRef = rtdb.ref(`meditationState/${uid}`);
     const cooldownSnap = await cooldownRef.once('value');
     const cooldownData = cooldownSnap.val() || { unlockTime: 0 };
@@ -35,6 +36,7 @@ exports.meditate = onCall(async (request) => {
         let currentEnergy = regenData.energy;
         const newLastEnergyUpdate = regenData.lastEnergyUpdate;
 
+        // Consume Energy for Deep Meditation
         if (type === 'deep') {
             if (currentEnergy < DEEP_MEDITATION_COST) {
                 throw new HttpsError('failed-precondition', 'Not enough energy.');
@@ -42,6 +44,7 @@ exports.meditate = onCall(async (request) => {
             currentEnergy -= DEEP_MEDITATION_COST;
         }
 
+        // Generate Rewards
         let result;
         if (type === 'quick') {
             result = generateQuickMeditationReward(data);
@@ -49,6 +52,7 @@ exports.meditate = onCall(async (request) => {
             result = generateDeepMeditationReward(data);
         }
 
+        // Handle Inventory (Loot)
         let newInventory = data.inventory || [];
         if (result.item) {
             const itemIndex = newInventory.findIndex(item => item.id === result.item);
@@ -59,6 +63,7 @@ exports.meditate = onCall(async (request) => {
             }
         }
 
+        // Handle XP and Progression
         let newXp = (data.experience || 0) + result.experience;
         let newStones = (data.spiritStones || 0) + result.spiritStones;
         let newRealmIndex = data.realmIndex || 0;
@@ -85,10 +90,8 @@ exports.meditate = onCall(async (request) => {
             }
         }
 
-        const duration = (result.cooldown || 5) * 1000;
-        const newUnlockTime = now + duration;
-
-        transaction.update(playerRef, {
+        // Prepare Base Updates
+        const updates = {
             experience: newXp,
             spiritStones: newStones,
             energy: currentEnergy, 
@@ -97,12 +100,24 @@ exports.meditate = onCall(async (request) => {
             stageIndex: newStageIndex,
             unallocatedPoints: newPoints,
             experienceNeeded: newXpNeeded,
-            inventory: newInventory,
-            lastMeditationTime: type === 'quick' ? now : data.lastMeditationTime,
-            lastCooldownDuration: result.cooldown || 5 
-        });
+            inventory: newInventory
+        };
 
-        cooldownRef.set({ unlockTime: newUnlockTime });
+        // Handle Cooldown Logic (FIX: Only for Quick Meditation)
+        if (type === 'quick') {
+            const duration = (result.cooldown || 5) * 1000;
+            const newUnlockTime = now + duration;
+            
+            // Update Firestore timing stats
+            updates.lastMeditationTime = now;
+            updates.lastCooldownDuration = result.cooldown || 5;
+
+            // Update RTDB Lock
+            cooldownRef.set({ unlockTime: newUnlockTime });
+        }
+        // NOTE: Deep meditation does NOT update lastMeditationTime or the RTDB lock.
+
+        transaction.update(playerRef, updates);
 
         return {
             success: true,

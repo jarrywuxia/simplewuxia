@@ -25,22 +25,27 @@ exports.equipTechnique = onCall(async (request) => {
         let equipped = data.equippedTechniques || [null, null, null, null, null];
         const learned = data.learnedTechniques || [];
 
+        // 1. Check if technique exists and is learned
         if (techniqueId) {
             if (!learned.includes(techniqueId)) {
                 throw new HttpsError('failed-precondition', 'You have not learned this technique.');
             }
-            const existingIndex = equipped.indexOf(techniqueId);
-            if (existingIndex > -1 && existingIndex !== slotIndex) {
-                equipped[existingIndex] = null;
-            }
+            
+            // --- REMOVED LOGIC START ---
+            // previously: check if existingIndex > -1 and remove it.
+            // We deleted that block to allow duplicates.
+            // --- REMOVED LOGIC END ---
         }
 
+        // 2. Set the slot (overwrite whatever was there)
         equipped[slotIndex] = techniqueId || null;
+
         transaction.update(playerRef, { equippedTechniques: equipped });
         return { success: true, message: 'Technique slot updated.' };
     });
 });
 
+// ... pveFight remains the same ...
 exports.pveFight = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
     
@@ -57,7 +62,6 @@ exports.pveFight = onCall(async (request) => {
 
         if (!enemyData) throw new HttpsError('not-found', 'Enemy not found.');
 
-        // 1. Calculate REAL Stats (Base + Equipment)
         const battleStats = calculateTotalStats(playerData);
         
         const playerBattleData = { ...playerData, stats: battleStats };

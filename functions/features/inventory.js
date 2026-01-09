@@ -147,7 +147,7 @@ exports.equipItem = onCall(async (request) => {
 
         return { 
             success: true, 
-            message: `Equipped ${itemDef.name}`,
+            message: `You equipped ${itemDef.name}.`,
             equippedId: itemId,
             unequippedId: currentlyEquippedId || null
         };

@@ -29,8 +29,7 @@ const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, acti
   const prevHp = useRef(stats.hp);
 
   useEffect(() => {
-    // FIX: Only trigger shake if HP dropped AND we are actively replaying a battle.
-    // This prevents the red flash when switching between enemies with different Max HP.
+    // Only trigger shake if HP dropped AND we are actively replaying a battle.
     if (stats.hp < prevHp.current && isReplaying) {
       setIsHurt(true);
       const timer = setTimeout(() => setIsHurt(false), 300);
@@ -199,19 +198,17 @@ function CombatPage({ playerData }) {
     }
   }, [selectedEnemy, playerData]);
 
-  const findTechIdByName = (name) => {
-    return Object.keys(TECHNIQUE_REGISTRY).find(key => TECHNIQUE_REGISTRY[key].name === name);
-  };
-
+  // Helper: Finds the next non-null slot in the rotation
   const findNextActiveSlot = (loadout, currentSlotIndex) => {
     if (!loadout || loadout.length === 0) return 0;
+    // Iterate 1 to 5 steps ahead to find the next valid slot
     for (let i = 1; i <= 5; i++) {
         const nextIndex = (currentSlotIndex + i) % 5;
         if (loadout[nextIndex] !== null && loadout[nextIndex] !== undefined) {
             return nextIndex;
         }
     }
-    return 0;
+    return 0; // Fallback
   };
 
   const handleFight = async () => {
@@ -226,6 +223,7 @@ function CombatPage({ playerData }) {
     setCombatLog([]); 
     setBattleResult(null);
 
+    // Initial Slot Calculation: Find the first non-null slot
     setReplayState(prev => ({ 
         ...prev, 
         playerSlot: findNextActiveSlot(playerData.equippedTechniques, -1),
@@ -237,6 +235,7 @@ function CombatPage({ playerData }) {
       const result = await fightFn({ enemyId: selectedEnemy.id });
       const data = result.data;
 
+      // Update Max Stats based on server result
       if (data.initialStats) {
           setReplayState(prev => ({
               ...prev,
@@ -248,6 +247,7 @@ function CombatPage({ playerData }) {
               enemyMaxHp: data.initialStats.enemyMaxHp,
               enemyQi: data.initialStats.enemyMaxQi || 0,
               enemyMaxQi: data.initialStats.enemyMaxQi || 0,
+              // Recalculate initial slots in case loadout changed
               playerSlot: findNextActiveSlot(playerData.equippedTechniques, -1),
               enemySlot: findNextActiveSlot(selectedEnemy.loadout, -1)
           }));
@@ -270,8 +270,12 @@ function CombatPage({ playerData }) {
 
           if (entry) {
             setCombatLog(prev => [...prev, entry]);
+            
+            // --- UPDATE REPLAY STATE ---
             setReplayState(prev => {
                 const newState = { ...prev };
+                
+                // 1. Update Vitals
                 if (entry.currentQi !== undefined) {
                     if (entry.actor === 'player') newState.playerQi = entry.currentQi;
                     else if (entry.actor === 'enemy') newState.enemyQi = entry.currentQi;
@@ -285,15 +289,16 @@ function CombatPage({ playerData }) {
                     if (entry.actor === 'player') newState.playerShield = entry.currentShield;
                     else newState.enemyShield = entry.currentShield;
                 }
+
+                // 2. Advance Rotation Pointers (FIXED LOGIC)
+                // We don't try to guess the slot by name anymore.
+                // We simply advance the pointer to the next valid slot.
                 if (entry.type !== 'wait' && entry.type !== 'info' && entry.type !== 'error') {
-                    const usedTechId = findTechIdByName(entry.action);
                     if (entry.actor === 'player') {
-                        const slotIndex = playerData.equippedTechniques.indexOf(usedTechId);
-                        if (slotIndex > -1) newState.playerSlot = findNextActiveSlot(playerData.equippedTechniques, slotIndex);
+                        newState.playerSlot = findNextActiveSlot(playerData.equippedTechniques, prev.playerSlot);
                     } else if (entry.actor === 'enemy') {
                         const loadout = selectedEnemy.loadout || [];
-                        const slotIndex = loadout.indexOf(usedTechId);
-                        if (slotIndex > -1) newState.enemySlot = findNextActiveSlot(loadout, slotIndex);
+                        newState.enemySlot = findNextActiveSlot(loadout, prev.enemySlot);
                     }
                 }
                 return newState;

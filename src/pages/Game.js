@@ -9,13 +9,14 @@ import { REALMS } from '../gameData';
 import Sidebar from '../components/Sidebar';
 import ChatBox from '../components/ChatBox';
 import ItemModal from '../components/ItemModal';
+import Toast from '../components/Toast'; // IMPORT TOAST
 
 // PAGES
 import MeditationPage from './MeditationPage';
 import InventoryPage from './InventoryPage';
 import ProfilePage from './ProfilePage';
 import CombatPage from './CombatPage';
-import TechniquesPage from './TechniquesPage'; // ADDED
+import TechniquesPage from './TechniquesPage';
 
 function Game({ playerData, onPlayerUpdate }) {
   const [currentPage, setCurrentPage] = useState('meditation');
@@ -31,8 +32,18 @@ function Game({ playerData, onPlayerUpdate }) {
   // CHAT DRAFT STATE
   const [chatDraft, setChatDraft] = useState('');
 
+  // TOAST STATE
+  const [toast, setToast] = useState(null);
+
   const handleLogout = async () => {
     await signOut(auth);
+  };
+
+  // --- TOAST HELPER ---
+  const showToast = (message, type = 'success') => {
+    // Clean up Firebase error prefixes if present for cleaner UI
+    const cleanMessage = message ? message.replace('Error:', '').replace('failed-precondition:', '').trim() : 'Unknown error';
+    setToast({ message: cleanMessage, type });
   };
 
   // --- HELPERS ---
@@ -63,6 +74,7 @@ function Game({ playerData, onPlayerUpdate }) {
       await onPlayerUpdate(); 
     } catch (err) {
       console.error(err);
+      showToast("Failed to allocate point", "error");
     } finally {
       setActionLoading(false);
     }
@@ -73,13 +85,16 @@ function Game({ playerData, onPlayerUpdate }) {
     setActionLoading(true);
     try {
       const consumeItem = httpsCallable(functions, 'useItem'); 
-      // Send quantity to backend
       const result = await consumeItem({ itemId, quantity });
-      console.log(result.data.message); 
+      
+      // Show Success Toast
+      showToast(result.data.message, 'success');
+      
       setSelectedItem(null); 
       await onPlayerUpdate(); 
     } catch (err) {
-      alert(err.message || "Failed.");
+      // Show Error Toast
+      showToast(err.message, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -90,11 +105,16 @@ function Game({ playerData, onPlayerUpdate }) {
     setActionLoading(true);
     try {
       const equipFn = httpsCallable(functions, 'equipItem');
-      await equipFn({ itemId });
+      const result = await equipFn({ itemId });
+      
+      // Show Success Toast
+      showToast(result.data.message, 'success');
+
       setSelectedItem(null);
       await onPlayerUpdate();
     } catch (err) {
-      alert(err.message || "Failed.");
+      // Show Error Toast
+      showToast(err.message, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -105,11 +125,15 @@ function Game({ playerData, onPlayerUpdate }) {
     setActionLoading(true);
     try {
       const unequipFn = httpsCallable(functions, 'unequipItem');
-      await unequipFn({ slot });
+      const result = await unequipFn({ slot });
+      
+      showToast(result.data.message, 'success');
+
       setSelectedItem(null); 
       await onPlayerUpdate();
     } catch (err) {
       console.error(err);
+      showToast(err.message, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -154,14 +178,21 @@ function Game({ playerData, onPlayerUpdate }) {
                     <span className="text-[10px] font-bold text-ink-light uppercase tracking-widest">Quantity</span>
                     <span className="text-xs font-mono font-bold text-ink">{consumeQuantity} / {count}</span>
                  </div>
-                 {/* ... existing slider code ... */}
+                 <input 
+                    type="range" 
+                    min="1" 
+                    max={count} 
+                    value={consumeQuantity} 
+                    onChange={(e) => setConsumeQuantity(parseInt(e.target.value))}
+                    className="w-full h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-accent"
+                 />
                </>
              )}
 
             <button 
               disabled={actionLoading}
               onClick={() => handleUseItem(selectedItem.id, selectedItem.type === 'manual' ? 1 : consumeQuantity)}
-              className="btn-primary w-full py-2 uppercase tracking-widest text-xs disabled:opacity-50"
+              className="btn-primary w-full py-2 uppercase tracking-widest text-xs disabled:opacity-50 mt-2"
             >
               {actionLoading 
                 ? 'Processing...' 
@@ -172,7 +203,7 @@ function Game({ playerData, onPlayerUpdate }) {
         )}
         
         {/* EQUIPMENT LOGIC */}
-        {(selectedItem?.type === 'weapon' || selectedItem?.type === 'armor') && (
+        {['weapon', 'armor', 'boots', 'helmet', 'ring', 'amulet'].includes(selectedItem?.type) && (
           <>
             {equipped ? (
               <button 
@@ -340,6 +371,15 @@ function Game({ playerData, onPlayerUpdate }) {
           {currentPage === 'combat' && <CombatPage playerData={playerData} />}
         </div>
       </div>
+
+      {/* GLOBAL TOAST NOTIFICATION */}
+      {toast && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast(null)} 
+        />
+      )}
     </div>
   );
 }

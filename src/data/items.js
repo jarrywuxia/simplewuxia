@@ -71,7 +71,7 @@ export const itemRegistry = {
     description: 'Lightweight boots for dodging. (+2 Def, +3% Eva)',
     type: ITEM_TYPES.BOOTS,
     slot: 'boots',
-    icon: '/assets/icons/items/armor/SODA_Icon_Armor_Leather_Foot.png', // You might need to find a boot icon
+    icon: '/assets/icons/items/armor/SODA_Icon_Armor_LeatherBoots.png', // You might need to find a boot icon
     stats: { defense: 2, evasion: 3 },
     rarity: 'common'
   },

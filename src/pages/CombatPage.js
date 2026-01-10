@@ -3,9 +3,10 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
 import { ENEMIES } from '../data/enemies';
 import { TECHNIQUE_REGISTRY } from '../data/techniques'; 
+import { STATUS_REGISTRY } from '../data/statusEffects'; 
 
 // --- ANIMATION STYLES ---
-const shakeKeyframes = `
+const stylesKeyframes = `
   @keyframes subtle-shake {
     0% { transform: translate(0, 0); }
     25% { transform: translate(-2px, 1px); }
@@ -13,34 +14,55 @@ const shakeKeyframes = `
     75% { transform: translate(-1px, 0); }
     100% { transform: translate(0, 0); }
   }
+  @keyframes pulse-green {
+    0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+    70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+  }
+  @keyframes pulse-purple {
+    0% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4); }
+    70% { box-shadow: 0 0 0 6px rgba(168, 85, 247, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); }
+  }
   .animate-hurt {
     animation: subtle-shake 0.3s ease-in-out;
     filter: sepia(1) hue-rotate(-50deg) saturate(3);
   }
+  .animate-heal {
+    animation: pulse-green 0.5s ease-in-out;
+  }
+  .animate-debuff {
+    animation: pulse-purple 0.5s ease-in-out;
+  }
 `;
 
+const DEBUFF_IDS = ['poison', 'burn', 'stun', 'weakness'];
+
 // --- SUB-COMPONENT: COMBAT ENTITY ---
-const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, activeSlot, isReplaying }) => {
+const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, activeSlot, activeEffects, isReplaying }) => {
   const getPct = (current, max) => max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
   const displayLoadout = loadout || [null, null, null, null, null];
 
-  // --- SHAKE LOGIC ---
   const [isHurt, setIsHurt] = useState(false);
+  const [isHealed, setIsHealed] = useState(false);
   const prevHp = useRef(stats.hp);
 
   useEffect(() => {
-    // Only trigger shake if HP dropped AND we are actively replaying a battle.
-    if (stats.hp < prevHp.current && isReplaying) {
+    if (!isReplaying) return;
+    if (stats.hp < prevHp.current) {
       setIsHurt(true);
-      const timer = setTimeout(() => setIsHurt(false), 300);
-      return () => clearTimeout(timer);
+      setTimeout(() => setIsHurt(false), 300);
+    }
+    if (stats.hp > prevHp.current) {
+      setIsHealed(true);
+      setTimeout(() => setIsHealed(false), 500);
     }
     prevHp.current = stats.hp;
   }, [stats.hp, isReplaying]);
 
   return (
     <div className={`flex flex-col ${type === 'player' ? 'items-end' : 'items-start'} w-1/2 px-2`}>
-      <style>{shakeKeyframes}</style>
+      <style>{stylesKeyframes}</style>
       
       {/* 1. AVATAR & NAME */}
       <div className={`flex items-center gap-3 mb-2 ${type === 'player' ? 'flex-row-reverse text-right' : 'flex-row text-left'}`}>
@@ -48,7 +70,7 @@ const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, acti
           className={`
             w-14 h-14 border-2 border-border shadow-sm p-1 flex-shrink-0 overflow-hidden relative
             bg-transparent transition-all duration-100
-            ${isHurt ? 'animate-hurt border-red-400' : 'border-border'}
+            ${isHurt ? 'animate-hurt border-red-400' : isHealed ? 'animate-heal border-emerald-400' : 'border-border'}
           `}
         >
            {icon ? (
@@ -73,6 +95,19 @@ const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, acti
           <div className="text-[10px] uppercase font-bold text-ink-light tracking-widest">
             {type === 'player' ? 'Cultivator' : 'Opponent'}
           </div>
+          
+          {/* STATUS ICONS ROW */}
+          <div className={`flex gap-1 mt-1 ${type === 'player' ? 'justify-end' : 'justify-start'}`}>
+            {activeEffects && activeEffects.map((effectId, idx) => {
+              const def = STATUS_REGISTRY[effectId];
+              if (!def) return null;
+              return (
+                <div key={`${effectId}-${idx}`} className="w-4 h-4 bg-white border border-gray-300 rounded-sm" title={def.name}>
+                   <img src={def.icon} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} />
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -82,7 +117,6 @@ const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, acti
           const techId = displayLoadout[index];
           const tech = techId ? TECHNIQUE_REGISTRY[techId] : null;
           const isActive = activeSlot === index;
-          
           return (
             <div 
               key={index}
@@ -114,9 +148,8 @@ const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, acti
 
       {/* 3. BARS */}
       <div className="w-full space-y-2">
-        {/* HP BAR */}
         <div className="relative h-4 bg-gray-200 w-full rounded-sm overflow-hidden border border-gray-300 shadow-inner">
-            <div className={`absolute top-0 left-0 h-full transition-all duration-300 ease-out ${type === 'player' ? 'bg-red-700' : 'bg-red-700'}`}
+            <div className={`absolute top-0 left-0 h-full transition-all duration-300 ease-out bg-red-700`}
                 style={{ width: `${getPct(stats.hp, maxStats.hp)}%` }} />
             {shield > 0 && (
                 <div className="absolute top-0 left-0 h-full border-r border-white bg-cyan-400/50 z-10 transition-all duration-300"
@@ -127,9 +160,8 @@ const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, acti
                 {shield > 0 && <span className="ml-1 text-cyan-100">(+{shield})</span>}
             </span>
         </div>
-        {/* QI BAR */}
         <div className="relative h-4 bg-gray-200 w-full rounded-sm overflow-hidden border border-gray-300 shadow-inner">
-            <div className={`absolute top-0 left-0 h-full transition-all duration-300 ease-out ${type === 'player' ? 'bg-sky-600' : 'bg-sky-600'}`}
+            <div className={`absolute top-0 left-0 h-full transition-all duration-300 ease-out bg-sky-600`}
                 style={{ width: `${getPct(stats.qi, maxStats.qi)}%` }} />
             <span className="absolute inset-0 flex items-center justify-center text-[9px] text-white font-mono font-bold drop-shadow-md z-20">
                 {Math.max(0, Math.floor(stats.qi))} / {maxStats.qi} Qi
@@ -150,8 +182,8 @@ function CombatPage({ playerData }) {
   const logContainerRef = useRef(null);
 
   const [replayState, setReplayState] = useState({
-    playerHp: 100, playerMaxHp: 100, playerQi: 50, playerMaxQi: 50, playerShield: 0, playerSlot: 0, 
-    enemyHp: 100, enemyMaxHp: 100, enemyQi: 0, enemyMaxQi: 0, enemyShield: 0, enemySlot: 0   
+    playerHp: 100, playerMaxHp: 100, playerQi: 50, playerMaxQi: 50, playerShield: 0, playerSlot: 0, playerEffects: [],
+    enemyHp: 100, enemyMaxHp: 100, enemyQi: 0, enemyMaxQi: 0, enemyShield: 0, enemySlot: 0, enemyEffects: []
   });
 
   useEffect(() => {
@@ -188,32 +220,31 @@ function CombatPage({ playerData }) {
             playerMaxQi: playerData?.stats?.qi || 50,
             playerShield: 0,
             playerSlot: 0,
+            playerEffects: [], 
             enemyHp: selectedEnemy.stats.maxHp,
             enemyMaxHp: selectedEnemy.stats.maxHp,
             enemyQi: selectedEnemy.stats.qi || 0,
             enemyMaxQi: selectedEnemy.stats.qi || 0,
             enemyShield: 0,
-            enemySlot: 0
+            enemySlot: 0,
+            enemyEffects: [] 
         });
     }
   }, [selectedEnemy, playerData]);
 
-  // Helper: Finds the next non-null slot in the rotation
   const findNextActiveSlot = (loadout, currentSlotIndex) => {
     if (!loadout || loadout.length === 0) return 0;
-    // Iterate 1 to 5 steps ahead to find the next valid slot
     for (let i = 1; i <= 5; i++) {
         const nextIndex = (currentSlotIndex + i) % 5;
         if (loadout[nextIndex] !== null && loadout[nextIndex] !== undefined) {
             return nextIndex;
         }
     }
-    return 0; // Fallback
+    return 0;
   };
 
   const handleFight = async () => {
     if (!selectedEnemy || loading) return;
-    
     if (playerData.energy < 5) {
         setBattleResult('error'); 
         return;
@@ -223,7 +254,6 @@ function CombatPage({ playerData }) {
     setCombatLog([]); 
     setBattleResult(null);
 
-    // Initial Slot Calculation: Find the first non-null slot
     setReplayState(prev => ({ 
         ...prev, 
         playerSlot: findNextActiveSlot(playerData.equippedTechniques, -1),
@@ -235,7 +265,6 @@ function CombatPage({ playerData }) {
       const result = await fightFn({ enemyId: selectedEnemy.id });
       const data = result.data;
 
-      // Update Max Stats based on server result
       if (data.initialStats) {
           setReplayState(prev => ({
               ...prev,
@@ -247,7 +276,6 @@ function CombatPage({ playerData }) {
               enemyMaxHp: data.initialStats.enemyMaxHp,
               enemyQi: data.initialStats.enemyMaxQi || 0,
               enemyMaxQi: data.initialStats.enemyMaxQi || 0,
-              // Recalculate initial slots in case loadout changed
               playerSlot: findNextActiveSlot(playerData.equippedTechniques, -1),
               enemySlot: findNextActiveSlot(selectedEnemy.loadout, -1)
           }));
@@ -275,7 +303,7 @@ function CombatPage({ playerData }) {
             setReplayState(prev => {
                 const newState = { ...prev };
                 
-                // 1. Update Vitals
+                // 1. Vitals
                 if (entry.currentQi !== undefined) {
                     if (entry.actor === 'player') newState.playerQi = entry.currentQi;
                     else if (entry.actor === 'enemy') newState.enemyQi = entry.currentQi;
@@ -285,15 +313,46 @@ function CombatPage({ playerData }) {
                     else if (entry.actor === 'enemy') newState.playerHp = entry.targetHp;
                     else if (entry.type === 'struggle') newState.enemyHp = entry.targetHp;
                 }
+                if (entry.currentHp !== undefined) { 
+                    if (entry.actor === 'player') newState.playerHp = entry.currentHp;
+                    else if (entry.actor === 'enemy') newState.enemyHp = entry.currentHp;
+                }
                 if (entry.currentShield !== undefined) {
                     if (entry.actor === 'player') newState.playerShield = entry.currentShield;
                     else newState.enemyShield = entry.currentShield;
                 }
 
-                // 2. Advance Rotation Pointers (FIXED LOGIC)
-                // We don't try to guess the slot by name anymore.
-                // We simply advance the pointer to the next valid slot.
-                if (entry.type !== 'wait' && entry.type !== 'info' && entry.type !== 'error') {
+                // 2. Add Status Effect
+                // We check entry.appliedEffectId (for Damage+Status) OR entry.type === 'effect_apply' (Pure Status)
+                if (entry.appliedEffectId || (entry.type === 'effect_apply' && entry.effectId)) {
+                  const effectId = entry.appliedEffectId || entry.effectId;
+                  const isDebuff = DEBUFF_IDS.includes(effectId);
+                  
+                  let targetIsPlayer = false;
+                  if (entry.actor === 'player') {
+                    targetIsPlayer = !isDebuff; // Player used move: Buff->Player, Debuff->Enemy
+                  } else {
+                    targetIsPlayer = isDebuff; // Enemy used move: Buff->Enemy, Debuff->Player
+                  }
+
+                  if (targetIsPlayer) {
+                    if (!prev.playerEffects.includes(effectId)) newState.playerEffects = [...prev.playerEffects, effectId];
+                  } else {
+                    if (!prev.enemyEffects.includes(effectId)) newState.enemyEffects = [...prev.enemyEffects, effectId];
+                  }
+                }
+
+                // 3. Remove Status Effect
+                if (entry.type === 'effect_expire') {
+                    if (entry.actor === 'player') {
+                        newState.playerEffects = prev.playerEffects.filter(e => e !== entry.effectId);
+                    } else {
+                        newState.enemyEffects = prev.enemyEffects.filter(e => e !== entry.effectId);
+                    }
+                }
+
+                // 4. Advance Pointers
+                if (['technique', 'miss', 'shield', 'restore_qi', 'effect_apply', 'damage'].includes(entry.type)) {
                     if (entry.actor === 'player') {
                         newState.playerSlot = findNextActiveSlot(playerData.equippedTechniques, prev.playerSlot);
                     } else if (entry.actor === 'enemy') {
@@ -345,10 +404,91 @@ function CombatPage({ playerData }) {
   const renderLogEntry = (entry, index) => {
     if (!entry) return null;
 
-    if (entry.type === 'error') {
-        return <div key={index} className="text-red-600 font-bold text-center text-xs my-2 border border-red-200 bg-red-50 p-1">{entry.text}</div>;
+    // --- EXPIRATION LOG ---
+    if (entry.type === 'effect_expire') {
+        const isPlayer = entry.actor === 'player';
+        const def = STATUS_REGISTRY[entry.effectId];
+        return (
+            <div key={index} className="text-[10px] mb-1 text-center bg-gray-50/50 text-gray-400 border-b border-gray-100 pb-1 italic">
+                <span className="font-mono opacity-50 mr-2">[{entry.time}s]</span>
+                <span>{def ? def.name : entry.effectId} wore off from {isPlayer ? 'you' : selectedEnemy.name}.</span>
+            </div>
+        );
     }
 
+    if (entry.type === 'effect_apply') {
+        const def = STATUS_REGISTRY[entry.effectId];
+        return (
+            <div key={index} className="text-[10px] mb-1 text-center bg-gray-50 border-b border-gray-100 pb-1">
+                <span className="font-mono text-gray-400 mr-2">[{entry.time}s]</span>
+                <span className={`${def ? def.color : 'text-gray-600'} font-bold`}>
+                    {def ? def.name : entry.effectId} Applied!
+                </span>
+            </div>
+        );
+    }
+
+    if (entry.type === 'effect_tick') {
+      const isPlayer = entry.actor === 'player';
+      const def = STATUS_REGISTRY[entry.effectId];
+      // Determine the name of the person suffering the effect
+      const targetName = isPlayer ? 'You' : selectedEnemy.name; 
+        
+      if (entry.heal) {
+        return (
+          <div key={index} className={`text-[10px] mb-1 border-b border-gray-100 pb-1 ${isPlayer ? 'text-right text-emerald-600' : 'text-left text-emerald-700'}`}>
+            <span className="font-mono text-gray-400 opacity-50 mr-2">[{entry.time}s]</span>
+            <span>
+              {def ? def.name : 'Regen'} healed <span className="font-bold">{targetName}</span> for {entry.heal} HP
+            </span>
+          </div>
+        );
+      } else {
+        return (
+          <div key={index} className={`text-[11px] mb-1 border-b border-gray-100 pb-1 ${isPlayer ? 'text-right text-purple-600' : 'text-left text-purple-700'}`}>
+            <span className="font-mono text-gray-400 opacity-50 mr-2">[{entry.time}s]</span>
+            <span>
+              {def ? def.name : 'DoT'} dealt <span className="font-bold">{entry.damage} Dmg</span> to <span className="font-bold">{targetName}</span>
+            </span>
+          </div>
+        );
+      }
+    }
+    
+    if (entry.type === 'stunned') {
+        const isPlayer = entry.actor === 'player';
+        return (
+            <div key={index} className={`text-[10px] mb-1 font-bold ${isPlayer ? 'text-right text-yellow-600' : 'text-left text-yellow-700'}`}>
+                <span className="font-mono text-gray-400 mr-2">[{entry.time}s]</span>
+                ⚡ STUNNED (Turn Skipped)
+            </div>
+        );
+    }
+    
+    if (entry.type === 'damage') {
+      const isPlayer = entry.actor === 'player';
+      const appliedDef = entry.appliedEffectId ? STATUS_REGISTRY[entry.appliedEffectId] : null;
+
+      return (
+        <div key={index} className={`text-[11px] mb-1 border-b border-gray-100 pb-1 ${isPlayer ? 'text-blue-800 text-right' : 'text-red-800 text-left'}`}>
+          <span className="font-mono text-gray-400 opacity-50 mr-2">[{entry.time}s]</span>
+          <span>
+            {isPlayer ? `You hit with ` : `${selectedEnemy.name} hit with `}
+            <ActionWithIcon name={entry.action} />
+            {` for `}
+            <span className="font-bold text-sm">{entry.value}</span>
+            {appliedDef && (
+               <span className={`block text-[10px] font-bold ${appliedDef.color}`}>
+                  + Applied {appliedDef.name}
+               </span>
+            )}
+          </span>
+        </div>
+      );
+    }
+    
+    // Existing log types
+    if (entry.type === 'error') return <div key={index} className="text-red-600 font-bold text-center text-xs my-2 border border-red-200 bg-red-50 p-1">{entry.text}</div>;
     if (entry.type === 'miss') {
       const isPlayer = entry.actor === 'player';
       return (
@@ -363,22 +503,6 @@ function CombatPage({ playerData }) {
         </div>
       );
     }
-
-    if (entry.type === 'damage') {
-      const isPlayer = entry.actor === 'player';
-      return (
-        <div key={index} className={`text-[11px] mb-1 border-b border-gray-100 pb-1 ${isPlayer ? 'text-blue-800 text-right' : 'text-red-800 text-left'}`}>
-          <span className="font-mono text-gray-400 opacity-50 mr-2">[{entry.time}s]</span>
-          <span>
-            {isPlayer ? `You hit with ` : `${selectedEnemy.name} hit with `}
-            <ActionWithIcon name={entry.action} />
-            {` for `}
-            <span className="font-bold text-sm">{entry.value}</span>
-          </span>
-        </div>
-      );
-    }
-    
     if (entry.type === 'shield' || entry.type === 'restore_qi') {
        const isPlayer = entry.actor === 'player';
        const colorClass = entry.type === 'shield' ? (isPlayer ? 'text-cyan-700' : 'text-cyan-800') : 'text-green-700';
@@ -393,8 +517,6 @@ function CombatPage({ playerData }) {
         </div>
       ); 
     }
-
-    if (entry.type === 'wait') return null; 
     if (entry.type === 'info') return <div key={index} className="text-[10px] my-1 text-center text-gray-400 italic">{entry.action}</div>;
     if (entry.type === 'struggle') {
         const isPlayer = entry.actor === 'player';
@@ -474,6 +596,7 @@ function CombatPage({ playerData }) {
                       shield={replayState.playerShield}
                       loadout={playerData.equippedTechniques}
                       activeSlot={replayState.playerSlot}
+                      activeEffects={replayState.playerEffects} 
                       isReplaying={combatLog.length > 0 && !battleResult}
                    />
 
@@ -487,6 +610,7 @@ function CombatPage({ playerData }) {
                       shield={replayState.enemyShield}
                       loadout={selectedEnemy.loadout}
                       activeSlot={replayState.enemySlot}
+                      activeEffects={replayState.enemyEffects} 
                       isReplaying={combatLog.length > 0 && !battleResult}
                    />
                 </div>

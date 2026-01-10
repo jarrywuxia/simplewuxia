@@ -1,3 +1,5 @@
+// src/data/techniques.js
+
 export const TECH_TYPES = {
   OFFENSE: 'offense',
   DEFENSE: 'defense',
@@ -10,6 +12,7 @@ export const TECHNIQUE_REGISTRY = {
     name: 'Desperate Flail',
     description: 'A weak attack. 50% Power, 90% Acc.',
     type: TECH_TYPES.OFFENSE,
+    // Re-using Iron Fist icon as placeholder for generic struggle
     icon: '/assets/icons/techniques/iron_fist.png', 
     cooldown: 10, 
     qiCostBase: 0,
@@ -31,6 +34,35 @@ export const TECHNIQUE_REGISTRY = {
     accuracy: 95,
     initialCharge: 0
   },
+  
+  // --- NEW TECHNIQUES ---
+  'poison_needle': {
+    id: 'poison_needle',
+    name: 'Poison Needle',
+    description: 'Fires a toxic needle. Deals DoT (5 dmg/3s).',
+    type: TECH_TYPES.OFFENSE,
+    // Using a Dagger/Arrow icon for the needle
+    icon: '/assets/icons/system/status/SODA_StatusState_Poison.png',
+    cooldown: 8,
+    qiCostBase: 8,
+    qiCostPct: 0.0,
+    power: 40,
+    accuracy: 100
+  },
+  'stone_skin': {
+    id: 'stone_skin',
+    name: 'Stone Skin',
+    description: 'Hardens skin like rock. +10 Def for 10s.',
+    type: TECH_TYPES.DEFENSE,
+    // Using an Armor icon for the buff
+    icon: '/assets/icons/items/armor/SODA_Icon_Armor_Heavy_Chest.png',
+    cooldown: 15,
+    qiCostBase: 12,
+    qiCostPct: 0.05,
+    power: 0
+  },
+  // ----------------------
+
   'spirit_shield': {
     id: 'spirit_shield',
     name: 'Spirit Shield',

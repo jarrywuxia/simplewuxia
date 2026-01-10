@@ -95,6 +95,14 @@ export const itemRegistry = {
     type: ITEM_TYPES.MANUAL,
     icon: '/assets/icons/items/consumables/SODA_Icon_Books_Paper_Book1.png',
     rarity: 'rare'
+  },
+  'poison_needle_manual': {
+    id: 'poison_needle_manual',
+    name: 'Poison Needle Manual',
+    description: 'An old manual detailing how to use toxic needles.',
+    type: ITEM_TYPES.MANUAL,
+    icon: '/assets/icons/items/consumables/poison_manual.png',
+    rarity: 'rare'
   }
 };
 

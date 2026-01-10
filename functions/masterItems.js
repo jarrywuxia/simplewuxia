@@ -66,6 +66,14 @@ const MASTER_ITEMS = {
     // In the future, you could change type to 'gain_xp' for skill books
     effect: { type: 'learn_technique', value: 'gale_palm' }, 
     value: 150
+  },
+  'poison_needle_manual': {
+    name: 'Poison Needle Scroll',
+    type: 'manual', // New Type
+    // The effect tells the system what to do. 
+    // In the future, you could change type to 'gain_xp' for skill books
+    effect: { type: 'learn_technique', value: 'poison_needle' }, 
+    value: 150
   }
 };
 

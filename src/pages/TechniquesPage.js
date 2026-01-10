@@ -216,11 +216,11 @@ function TechniquesPage({ playerData, onPlayerUpdate }) {
                 return (
                     <button
                     key={tech.id}
-                    disabled={!selectedSlot} // Only disable if NO slot is selected (allows multi-equip)
+                    disabled={selectedSlot === null}
                     onClick={() => handleEquip(tech.id)}
                     className={`
                         w-full text-left p-3 border transition-all relative group
-                        ${selectedSlot 
+                        ${selectedSlot !== null
                             ? 'hover:border-accent hover:shadow-md cursor-pointer bg-white' 
                             : 'cursor-default bg-stone-50 border-border opacity-80'
                         }

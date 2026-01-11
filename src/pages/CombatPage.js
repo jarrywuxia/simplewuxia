@@ -196,7 +196,7 @@ const CombatEntity = ({
   );
 };
 
-// --- TOOLTIP COMPONENT (UPDATED) ---
+// --- TOOLTIP COMPONENT (UPDATED FOR MOBILE SAFETY) ---
 const EffectTooltip = ({ data, onClose }) => {
   if (!data) return null;
   const { x, y, def, effectInstance } = data;
@@ -217,11 +217,38 @@ const EffectTooltip = ({ data, onClose }) => {
       }
   }
 
-  // Adjust positioning to keep onscreen
+  // --- POSITIONING LOGIC ---
+  // The goal is to keep the tooltip fully on screen.
+  // We use w-48, which is 12rem => 192px.
+  // Add a bit of padding/border, treat it as ~200px.
+  const TOOLTIP_WIDTH = 192; 
+  const SCREEN_PADDING = 8; // min distance from edge
+
+  // 1. Calculate ideal left position (centered on icon)
+  let leftPos = x - (TOOLTIP_WIDTH / 2);
+
+  // 2. Clamp to screen edges
+  if (leftPos < SCREEN_PADDING) {
+      leftPos = SCREEN_PADDING;
+  } else if (leftPos + TOOLTIP_WIDTH > window.innerWidth - SCREEN_PADDING) {
+      leftPos = window.innerWidth - TOOLTIP_WIDTH - SCREEN_PADDING;
+  }
+
+  // 3. Set Box Style
   const style = {
-    top: y - 80, 
-    left: Math.min(window.innerWidth - 160, Math.max(10, x - 75))
+    top: y - 100, // Shift up higher to avoid finger coverage on mobile
+    left: leftPos
   };
+
+  // 4. Calculate Arrow Position
+  // The arrow needs to point to 'x' (the icon center).
+  // Relative to the tooltip container (which starts at leftPos):
+  // arrowOffset = IconX - ContainerX - HalfArrowWidth
+  const arrowOffset = x - leftPos - 6; // -6 accounts for half of w-3 (12px)
+
+  // Clamp arrow so it doesn't detach from the box corners if the icon is very close to edge
+  // (e.g. if icon is at x=5, arrow shouldn't be at x=-1)
+  const safeArrowOffset = Math.max(10, Math.min(TOOLTIP_WIDTH - 22, arrowOffset));
 
   return (
     <>
@@ -236,8 +263,12 @@ const EffectTooltip = ({ data, onClose }) => {
         <div className="text-[10px] text-ink-light leading-snug mb-2">
           {desc}
         </div>
-        {/* Triangle Arrow */}
-        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-b-2 border-r-2 border-ink rotate-45"></div>
+        
+        {/* Dynamic Arrow */}
+        <div 
+            className="absolute -bottom-1.5 w-3 h-3 bg-white border-b-2 border-r-2 border-ink rotate-45"
+            style={{ left: safeArrowOffset }}
+        ></div>
       </div>
     </>
   );
@@ -287,6 +318,7 @@ function CombatPage({ playerData }) {
 
   const handleEffectClick = (e, def, effectInstance) => {
     const rect = e.currentTarget.getBoundingClientRect();
+    // Use center of the icon for better positioning calculations
     setTooltipData({
       x: rect.left + (rect.width / 2),
       y: rect.top,

@@ -5,7 +5,7 @@ export const STATUS_REGISTRY = {
   'poison': {
     id: 'poison',
     name: 'Poison',
-    description: 'Taking damage over time.',
+    description: 'Taking {val} damage every {tick}s.',
     // Using a green color for UI text
     color: 'text-emerald-600', 
     // Generic "Bio/Poison" icon
@@ -14,7 +14,7 @@ export const STATUS_REGISTRY = {
   'burn': {
     id: 'burn',
     name: 'Burn',
-    description: 'Searing damage over time.',
+    description: 'Taking {val} fire damage every {tick}s.',
     color: 'text-orange-600',
     icon: '/assets/icons/system/status/SODA_StatusState_Poison.png'
   },
@@ -28,7 +28,7 @@ export const STATUS_REGISTRY = {
   'weakness': {
     id: 'weakness',
     name: 'Weakness',
-    description: 'Defense reduced.',
+    description: 'Strength reduced by {val}.',
     color: 'text-gray-500',
     icon: '/assets/icons/system/status/SODA_Icon_Status_ATK_Down.png'
   },
@@ -37,14 +37,14 @@ export const STATUS_REGISTRY = {
   'regeneration': {
     id: 'regeneration',
     name: 'Regeneration',
-    description: 'Recovering HP over time.',
+    description: 'Recovering {val} HP every {tick}s.',
     color: 'text-green-600',
     icon: '/assets/icons/system/status/SODA_StatusState_Heart.png'
   },
   'iron_skin': {
     id: 'iron_skin',
     name: 'Iron Skin',
-    description: 'Defense increased significantly.',
+    description: 'Defense increased by +{val}.',
     color: 'text-slate-600',
     // Reusing the Armor icon represents "tough skin" well
     icon: '/assets/icons/items/armor/SODA_Icon_Armor_Heavy_Chest.png'
@@ -52,14 +52,14 @@ export const STATUS_REGISTRY = {
   'focused': {
     id: 'focused',
     name: 'Focused',
-    description: 'Accuracy increased.',
+    description: 'Accuracy increased by +{val}.',
     color: 'text-blue-600',
     icon: '/assets/icons/system/status/SODA_Icon_Status_AGI_Up.png'
   },
   'sunder': {
     id: 'sunder',
     name: 'Sunder',
-    description: 'Defense reduced by 30%.',
+    description: 'Defense reduced by {val}%.',
     color: 'text-orange-700',
     icon: '/assets/icons/system/status/SODA_Icon_Status_DEF_Down.png'
   }

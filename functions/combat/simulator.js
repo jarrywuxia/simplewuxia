@@ -174,7 +174,12 @@ const applyTechniqueEffect = (tech, user, target, time) => {
                 }
                 
                 recalculateStats(recipient);
-                result.statusApplied.push(effectData.id);
+                result.statusApplied.push({
+                    id: effectData.id,
+                    value: effectData.value || 0,
+                    duration: effectData.duration,
+                    interval: def.tickInterval || 0
+                });
             }
         }
     });
@@ -369,7 +374,7 @@ exports.simulateCombat = (playerData, enemyData) => {
                       currentQi: Math.floor(actor.qi),
                       currentShield: actor.shield,
                       missed: res.missed,
-                      appliedEffectIds: res.statusApplied // Passed as Array
+                      appliedEffects: res.statusApplied
                   };
                   
                   if (res.missed) {

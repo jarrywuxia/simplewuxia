@@ -96,7 +96,7 @@ const TECHNIQUE_REGISTRY = {
         target: 'enemy', 
         id: 'poison', 
         duration: 9, 
-        value: 5 
+        value: 2 
       },
       { 
         type: 'apply_status', 
@@ -136,7 +136,7 @@ const TECHNIQUE_REGISTRY = {
     qiCostPct: 0,
     initialCharge: 0,
     effects: [
-      { type: 'restore_qi', value: 25 }
+      { type: 'restore_qi', value: 15 }
     ]
   },
   'gale_palm': {

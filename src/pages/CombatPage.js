@@ -109,12 +109,18 @@ const CombatEntity = ({
               if (!def) return null;
               
               const remaining = Math.max(0, (effect.expireTime - currentTime).toFixed(1));
+              
+              // Create a display object that includes the dynamic value/interval
+              const displayObj = { 
+                ...effect, 
+                remaining 
+              };
 
               return (
                 <button 
                   key={`${effect.id}-${idx}`} 
                   className="w-6 h-6 bg-white border border-gray-300 rounded-sm relative overflow-hidden group hover:border-accent transition-colors"
-                  onClick={(e) => onEffectClick(e, def, remaining)}
+                  onClick={(e) => onEffectClick(e, def, displayObj)}
                 >
                    <img src={def.icon} alt="" className="w-full h-full object-contain opacity-80" style={{ imageRendering: 'pixelated' }} />
                    
@@ -190,32 +196,45 @@ const CombatEntity = ({
   );
 };
 
-// --- TOOLTIP COMPONENT ---
+// --- TOOLTIP COMPONENT (UPDATED) ---
 const EffectTooltip = ({ data, onClose }) => {
   if (!data) return null;
-  const { x, y, def, duration } = data;
+  const { x, y, def, effectInstance } = data;
   
+  // Dynamic Description Parsing: Inject values into placeholders
+  let desc = def.description;
+  if (effectInstance) {
+      if (effectInstance.value !== undefined) {
+          desc = desc.replace('{val}', effectInstance.value);
+      } else {
+          desc = desc.replace('{val}', '?');
+      }
+      
+      if (effectInstance.interval !== undefined) {
+          desc = desc.replace('{tick}', effectInstance.interval);
+      } else {
+          desc = desc.replace('{tick}', '?');
+      }
+  }
+
   // Adjust positioning to keep onscreen
   const style = {
-    top: y - 80, // Position above the cursor
-    left: Math.min(window.innerWidth - 160, Math.max(10, x - 75)) // Center but clamp
+    top: y - 80, 
+    left: Math.min(window.innerWidth - 160, Math.max(10, x - 75))
   };
 
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose}></div>
       <div 
-        className="fixed z-50 bg-white border-2 border-ink p-2 shadow-xl w-40 status-tooltip"
+        className="fixed z-50 bg-white border-2 border-ink p-2 shadow-xl w-48 status-tooltip"
         style={style}
       >
         <div className={`text-xs font-bold uppercase border-b border-border pb-1 mb-1 ${def.color}`}>
           {def.name}
         </div>
-        <div className="text-[10px] text-ink-light leading-snug mb-1">
-          {def.description}
-        </div>
-        <div className="text-[9px] font-mono text-right text-gray-400">
-          Remains: {Math.ceil(duration)}s
+        <div className="text-[10px] text-ink-light leading-snug mb-2">
+          {desc}
         </div>
         {/* Triangle Arrow */}
         <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-b-2 border-r-2 border-ink rotate-45"></div>
@@ -230,7 +249,7 @@ function CombatPage({ playerData }) {
   const [loading, setLoading] = useState(false);
   const [battleResult, setBattleResult] = useState(null); 
   const [speedMultiplier, setSpeedMultiplier] = useState(1); 
-  const [currentTime, setCurrentTime] = useState(0); // Track replay time
+  const [currentTime, setCurrentTime] = useState(0); 
   const [tooltipData, setTooltipData] = useState(null);
 
   const speedRef = useRef(1);
@@ -238,7 +257,7 @@ function CombatPage({ playerData }) {
 
   const [replayState, setReplayState] = useState({
     playerHp: 100, playerMaxHp: 100, playerQi: 50, playerMaxQi: 50, playerShield: 0, playerSlot: 0, 
-    playerEffects: [], // Array of objects { id, expireTime }
+    playerEffects: [], // Array of objects { id, expireTime, value, interval }
     enemyHp: 100, enemyMaxHp: 100, enemyQi: 0, enemyMaxQi: 0, enemyShield: 0, enemySlot: 0, 
     enemyEffects: []
   });
@@ -266,13 +285,13 @@ function CombatPage({ playerData }) {
       speedRef.current = speed;
   };
 
-  const handleEffectClick = (e, def, duration) => {
+  const handleEffectClick = (e, def, effectInstance) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setTooltipData({
       x: rect.left + (rect.width / 2),
       y: rect.top,
       def,
-      duration
+      effectInstance
     });
   };
 
@@ -392,16 +411,26 @@ function CombatPage({ playerData }) {
                     else newState.enemyShield = entry.currentShield;
                 }
 
-                // 2. Add Status Effect (FIXED: Supports Independent Stacking)
+                // 2. Add Status Effect (UPDATED for Dynamic Objects)
                 // Only process effect addition on specific event types
                 const isApplicationEvent = ['technique', 'damage', 'effect_apply', 'shield', 'restore_qi'].includes(entry.type);
                 
-                const newEffects = isApplicationEvent 
-                    ? (entry.appliedEffectIds || (entry.effectId ? [entry.effectId] : []))
-                    : [];
+                // Newer backend logic uses 'appliedEffects' (array of objects with value)
+                // Older/Simple logs might use 'appliedEffectIds' or 'effectId'
+                const newEffectsList = entry.appliedEffects || []; 
                 
-                if (newEffects.length > 0) {
-                  newEffects.forEach(effectId => {
+                // Fallback for legacy logs or single ID events
+                if (newEffectsList.length === 0) {
+                    if (entry.appliedEffectIds) {
+                         entry.appliedEffectIds.forEach(id => newEffectsList.push({ id, value: entry.value || 0 }));
+                    } else if (entry.effectId && isApplicationEvent) {
+                         newEffectsList.push({ id: entry.effectId, value: entry.value || 0 });
+                    }
+                }
+                
+                if (newEffectsList.length > 0) {
+                  newEffectsList.forEach(effData => {
+                      const effectId = effData.id;
                       const isDebuff = DEBUFF_IDS.includes(effectId);
                       
                       let targetIsPlayer = false;
@@ -422,7 +451,14 @@ function CombatPage({ playerData }) {
                       // If we have N active, this new application corresponds to the (N)th expiry found in future
                       const expireEvent = futureExpires[activeStacks] || futureExpires[futureExpires.length - 1];
                       const expireTime = expireEvent ? expireEvent.time : (entry.time + 10);
-                      const effectObj = { id: effectId, expireTime };
+                      
+                      // CREATE FULL EFFECT OBJECT
+                      const effectObj = { 
+                          id: effectId, 
+                          expireTime, 
+                          value: effData.value,     // Capture Value
+                          interval: effData.interval // Capture Interval if present
+                      };
 
                       // APPEND to list (do not filter out old ones)
                       if (targetIsPlayer) {
@@ -572,9 +608,14 @@ function CombatPage({ playerData }) {
     
     if (entry.type === 'damage') {
       const isPlayer = entry.actor === 'player';
-      const appliedDefs = (entry.appliedEffectIds || [])
-        .map(id => STATUS_REGISTRY[id])
-        .filter(Boolean);
+      
+      // Handle the different ways effects might be stored in the log
+      let appliedDefs = [];
+      if (entry.appliedEffects && entry.appliedEffects.length > 0) {
+          appliedDefs = entry.appliedEffects.map(eff => ({ def: STATUS_REGISTRY[eff.id], val: eff.value }));
+      } else if (entry.appliedEffectIds) {
+          appliedDefs = entry.appliedEffectIds.map(id => ({ def: STATUS_REGISTRY[id], val: null }));
+      }
 
       return (
         <div key={index} className={`text-[11px] mb-1 border-b border-gray-100 pb-1 ${isPlayer ? 'text-blue-800 text-right' : 'text-red-800 text-left'}`}>
@@ -584,11 +625,14 @@ function CombatPage({ playerData }) {
             <ActionWithIcon name={entry.action} />
             {` for `}
             <span className="font-bold text-sm">{entry.value}</span>
-            {appliedDefs.map((def, idx) => (
-               <span key={idx} className={`block text-[10px] font-bold ${def.color}`}>
-                  + Applied {def.name}
-               </span>
-            ))}
+            {appliedDefs.map((item, idx) => {
+               if (!item.def) return null;
+               return (
+                 <span key={idx} className={`block text-[10px] font-bold ${item.def.color}`}>
+                    + Applied {item.def.name} {item.val ? `(${item.val})` : ''}
+                 </span>
+               );
+            })}
           </span>
         </div>
       );

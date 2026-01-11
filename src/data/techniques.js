@@ -49,6 +49,19 @@ export const TECHNIQUE_REGISTRY = {
     power: 40,
     accuracy: 100
   },
+  'venomous_strike': {
+    id: 'venomous_strike',
+    name: 'Venomous Strike',
+    description: 'A toxic blow. Deals DoT and weakens the enemy.',
+    type: TECH_TYPES.OFFENSE,
+    // Using a Dagger/Arrow icon for the needle
+    icon: '/assets/icons/system/status/SODA_StatusState_Death.png',
+    cooldown: 8,
+    qiCostBase: 8,
+    qiCostPct: 0.0,
+    power: 40,
+    accuracy: 100
+  },
   'stone_skin': {
     id: 'stone_skin',
     name: 'Stone Skin',

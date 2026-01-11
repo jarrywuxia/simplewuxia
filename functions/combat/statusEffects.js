@@ -43,7 +43,7 @@ const STATUS_EFFECTS = {
     id: 'weakness',
     name: 'Weakness',
     type: 'stat_mod',
-    statMod: { defense: -5 }, // Simulator will look for this object
+    statMod: { strength: -5 }, // Simulator will look for this object
     canStack: false
   },
   'iron_skin': {
@@ -65,6 +65,14 @@ const STATUS_EFFECTS = {
     name: 'Regeneration',
     type: 'buff',
     tickInterval: 4.0,
+    canStack: false
+  },
+  'sunder': {
+    id: 'sunder',
+    name: 'Sunder',
+    type: 'stat_mod',
+    // Apply -30% to Defense
+    statMod: { defense_pct: -30 }, 
     canStack: false
   }
 };

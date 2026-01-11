@@ -34,12 +34,18 @@ const stylesKeyframes = `
   .animate-debuff {
     animation: pulse-purple 0.5s ease-in-out;
   }
+  .status-tooltip {
+    animation: fadeIn 0.2s ease-out;
+  }
 `;
 
 const DEBUFF_IDS = ['poison', 'burn', 'stun', 'weakness'];
 
 // --- SUB-COMPONENT: COMBAT ENTITY ---
-const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, activeSlot, activeEffects, isReplaying }) => {
+const CombatEntity = ({ 
+  name, type, icon, stats, maxStats, shield, loadout, 
+  activeSlot, activeEffects, isReplaying, currentTime, onEffectClick 
+}) => {
   const getPct = (current, max) => max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
   const displayLoadout = loadout || [null, null, null, null, null];
 
@@ -97,14 +103,26 @@ const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, acti
           </div>
           
           {/* STATUS ICONS ROW */}
-          <div className={`flex gap-1 mt-1 ${type === 'player' ? 'justify-end' : 'justify-start'}`}>
-            {activeEffects && activeEffects.map((effectId, idx) => {
-              const def = STATUS_REGISTRY[effectId];
+          <div className={`flex gap-1 mt-1 flex-wrap ${type === 'player' ? 'justify-end' : 'justify-start'}`}>
+            {activeEffects && activeEffects.map((effect, idx) => {
+              const def = STATUS_REGISTRY[effect.id];
               if (!def) return null;
+              
+              const remaining = Math.max(0, (effect.expireTime - currentTime).toFixed(1));
+
               return (
-                <div key={`${effectId}-${idx}`} className="w-4 h-4 bg-white border border-gray-300 rounded-sm" title={def.name}>
-                   <img src={def.icon} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} />
-                </div>
+                <button 
+                  key={`${effect.id}-${idx}`} 
+                  className="w-6 h-6 bg-white border border-gray-300 rounded-sm relative overflow-hidden group hover:border-accent transition-colors"
+                  onClick={(e) => onEffectClick(e, def, remaining)}
+                >
+                   <img src={def.icon} alt="" className="w-full h-full object-contain opacity-80" style={{ imageRendering: 'pixelated' }} />
+                   
+                   {/* Duration Overlay */}
+                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <span className="text-[8px] text-white font-bold font-mono leading-none">{Math.ceil(remaining)}s</span>
+                   </div>
+                </button>
               );
             })}
           </div>
@@ -172,18 +190,57 @@ const CombatEntity = ({ name, type, icon, stats, maxStats, shield, loadout, acti
   );
 };
 
+// --- TOOLTIP COMPONENT ---
+const EffectTooltip = ({ data, onClose }) => {
+  if (!data) return null;
+  const { x, y, def, duration } = data;
+  
+  // Adjust positioning to keep onscreen
+  const style = {
+    top: y - 80, // Position above the cursor
+    left: Math.min(window.innerWidth - 160, Math.max(10, x - 75)) // Center but clamp
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose}></div>
+      <div 
+        className="fixed z-50 bg-white border-2 border-ink p-2 shadow-xl w-40 status-tooltip"
+        style={style}
+      >
+        <div className={`text-xs font-bold uppercase border-b border-border pb-1 mb-1 ${def.color}`}>
+          {def.name}
+        </div>
+        <div className="text-[10px] text-ink-light leading-snug mb-1">
+          {def.description}
+        </div>
+        <div className="text-[9px] font-mono text-right text-gray-400">
+          Remains: {Math.ceil(duration)}s
+        </div>
+        {/* Triangle Arrow */}
+        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-b-2 border-r-2 border-ink rotate-45"></div>
+      </div>
+    </>
+  );
+};
+
 function CombatPage({ playerData }) {
   const [selectedEnemy, setSelectedEnemy] = useState(null);
   const [combatLog, setCombatLog] = useState([]);
   const [loading, setLoading] = useState(false);
   const [battleResult, setBattleResult] = useState(null); 
   const [speedMultiplier, setSpeedMultiplier] = useState(1); 
+  const [currentTime, setCurrentTime] = useState(0); // Track replay time
+  const [tooltipData, setTooltipData] = useState(null);
+
   const speedRef = useRef(1);
   const logContainerRef = useRef(null);
 
   const [replayState, setReplayState] = useState({
-    playerHp: 100, playerMaxHp: 100, playerQi: 50, playerMaxQi: 50, playerShield: 0, playerSlot: 0, playerEffects: [],
-    enemyHp: 100, enemyMaxHp: 100, enemyQi: 0, enemyMaxQi: 0, enemyShield: 0, enemySlot: 0, enemyEffects: []
+    playerHp: 100, playerMaxHp: 100, playerQi: 50, playerMaxQi: 50, playerShield: 0, playerSlot: 0, 
+    playerEffects: [], // Array of objects { id, expireTime }
+    enemyHp: 100, enemyMaxHp: 100, enemyQi: 0, enemyMaxQi: 0, enemyShield: 0, enemySlot: 0, 
+    enemyEffects: []
   });
 
   useEffect(() => {
@@ -209,10 +266,21 @@ function CombatPage({ playerData }) {
       speedRef.current = speed;
   };
 
+  const handleEffectClick = (e, def, duration) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltipData({
+      x: rect.left + (rect.width / 2),
+      y: rect.top,
+      def,
+      duration
+    });
+  };
+
   useEffect(() => {
     if (selectedEnemy) {
         setCombatLog([]);
         setBattleResult(null);
+        setCurrentTime(0);
         setReplayState({
             playerHp: playerData?.stats?.maxHp || 100,
             playerMaxHp: playerData?.stats?.maxHp || 100,
@@ -253,6 +321,7 @@ function CombatPage({ playerData }) {
     setLoading(true);
     setCombatLog([]); 
     setBattleResult(null);
+    setCurrentTime(0);
 
     setReplayState(prev => ({ 
         ...prev, 
@@ -298,6 +367,7 @@ function CombatPage({ playerData }) {
 
           if (entry) {
             setCombatLog(prev => [...prev, entry]);
+            setCurrentTime(entry.time);
             
             // --- UPDATE REPLAY STATE ---
             setReplayState(prev => {
@@ -322,32 +392,63 @@ function CombatPage({ playerData }) {
                     else newState.enemyShield = entry.currentShield;
                 }
 
-                // 2. Add Status Effect
-                // We check entry.appliedEffectId (for Damage+Status) OR entry.type === 'effect_apply' (Pure Status)
-                if (entry.appliedEffectId || (entry.type === 'effect_apply' && entry.effectId)) {
-                  const effectId = entry.appliedEffectId || entry.effectId;
-                  const isDebuff = DEBUFF_IDS.includes(effectId);
-                  
-                  let targetIsPlayer = false;
-                  if (entry.actor === 'player') {
-                    targetIsPlayer = !isDebuff; // Player used move: Buff->Player, Debuff->Enemy
-                  } else {
-                    targetIsPlayer = isDebuff; // Enemy used move: Buff->Enemy, Debuff->Player
-                  }
+                // 2. Add Status Effect (FIXED: Supports Independent Stacking)
+                // Only process effect addition on specific event types
+                const isApplicationEvent = ['technique', 'damage', 'effect_apply', 'shield', 'restore_qi'].includes(entry.type);
+                
+                const newEffects = isApplicationEvent 
+                    ? (entry.appliedEffectIds || (entry.effectId ? [entry.effectId] : []))
+                    : [];
+                
+                if (newEffects.length > 0) {
+                  newEffects.forEach(effectId => {
+                      const isDebuff = DEBUFF_IDS.includes(effectId);
+                      
+                      let targetIsPlayer = false;
+                      if (entry.actor === 'player') targetIsPlayer = !isDebuff;
+                      else targetIsPlayer = isDebuff;
 
-                  if (targetIsPlayer) {
-                    if (!prev.playerEffects.includes(effectId)) newState.playerEffects = [...prev.playerEffects, effectId];
-                  } else {
-                    if (!prev.enemyEffects.includes(effectId)) newState.enemyEffects = [...prev.enemyEffects, effectId];
-                  }
+                      // Count current stacks to find which future expiry belongs to this new stack (FIFO)
+                      const currentList = targetIsPlayer ? newState.playerEffects : newState.enemyEffects;
+                      const activeStacks = currentList.filter(e => e.id === effectId).length;
+
+                      // Find all future expiry events for this ID/Actor
+                      const futureExpires = data.log.slice(i).filter(e => 
+                        e.type === 'effect_expire' && 
+                        e.effectId === effectId && 
+                        e.actor === (targetIsPlayer ? 'player' : 'enemy')
+                      );
+
+                      // If we have N active, this new application corresponds to the (N)th expiry found in future
+                      const expireEvent = futureExpires[activeStacks] || futureExpires[futureExpires.length - 1];
+                      const expireTime = expireEvent ? expireEvent.time : (entry.time + 10);
+                      const effectObj = { id: effectId, expireTime };
+
+                      // APPEND to list (do not filter out old ones)
+                      if (targetIsPlayer) {
+                        newState.playerEffects = [...newState.playerEffects, effectObj];
+                      } else {
+                        newState.enemyEffects = [...newState.enemyEffects, effectObj];
+                      }
+                  });
                 }
 
-                // 3. Remove Status Effect
+                // 3. Remove Status Effect (FIXED: Targeted Removal)
                 if (entry.type === 'effect_expire') {
-                    if (entry.actor === 'player') {
-                        newState.playerEffects = prev.playerEffects.filter(e => e !== entry.effectId);
-                    } else {
-                        newState.enemyEffects = prev.enemyEffects.filter(e => e !== entry.effectId);
+                    const list = (entry.actor === 'player') ? newState.playerEffects : newState.enemyEffects;
+                    
+                    // Find specific stack that expires at this time (allow small margin for floats)
+                    const indexToRemove = list.findIndex(e => e.id === entry.effectId && Math.abs(e.expireTime - entry.time) < 0.5);
+                    
+                    // If exact match not found, remove the oldest of that ID
+                    const fallbackIndex = list.findIndex(e => e.id === entry.effectId);
+                    
+                    const removeIdx = indexToRemove !== -1 ? indexToRemove : fallbackIndex;
+
+                    if (removeIdx !== -1) {
+                         const newList = list.filter((_, idx) => idx !== removeIdx);
+                         if (entry.actor === 'player') newState.playerEffects = newList;
+                         else newState.enemyEffects = newList;
                     }
                 }
 
@@ -457,17 +558,23 @@ function CombatPage({ playerData }) {
     
     if (entry.type === 'stunned') {
         const isPlayer = entry.actor === 'player';
+        // FIX: Explicitly show WHO is stunned
+        const subject = isPlayer ? 'You are' : `${selectedEnemy.name} is`;
+        
         return (
             <div key={index} className={`text-[10px] mb-1 font-bold ${isPlayer ? 'text-right text-yellow-600' : 'text-left text-yellow-700'}`}>
                 <span className="font-mono text-gray-400 mr-2">[{entry.time}s]</span>
-                ⚡ STUNNED (Turn Skipped)
+                {/* Updated Text */}
+                 {subject} Stunned! (Turn Skipped)
             </div>
         );
     }
     
     if (entry.type === 'damage') {
       const isPlayer = entry.actor === 'player';
-      const appliedDef = entry.appliedEffectId ? STATUS_REGISTRY[entry.appliedEffectId] : null;
+      const appliedDefs = (entry.appliedEffectIds || [])
+        .map(id => STATUS_REGISTRY[id])
+        .filter(Boolean);
 
       return (
         <div key={index} className={`text-[11px] mb-1 border-b border-gray-100 pb-1 ${isPlayer ? 'text-blue-800 text-right' : 'text-red-800 text-left'}`}>
@@ -477,11 +584,11 @@ function CombatPage({ playerData }) {
             <ActionWithIcon name={entry.action} />
             {` for `}
             <span className="font-bold text-sm">{entry.value}</span>
-            {appliedDef && (
-               <span className={`block text-[10px] font-bold ${appliedDef.color}`}>
-                  + Applied {appliedDef.name}
+            {appliedDefs.map((def, idx) => (
+               <span key={idx} className={`block text-[10px] font-bold ${def.color}`}>
+                  + Applied {def.name}
                </span>
-            )}
+            ))}
           </span>
         </div>
       );
@@ -527,7 +634,9 @@ function CombatPage({ playerData }) {
   };
 
   return (
-    <div className="card h-[85vh] md:h-[650px] flex flex-col p-0 overflow-hidden">
+    <div className="card h-[85vh] md:h-[650px] flex flex-col p-0 overflow-hidden relative">
+      <EffectTooltip data={tooltipData} onClose={() => setTooltipData(null)} />
+
       {/* 1. HEADER & CONTROLS */}
       <div className="p-3 border-b border-border bg-gray-50 flex justify-between items-center">
         <h2 className="text-lg font-bold text-ink font-serif uppercase tracking-widest">Combat Arena</h2>
@@ -598,6 +707,8 @@ function CombatPage({ playerData }) {
                       activeSlot={replayState.playerSlot}
                       activeEffects={replayState.playerEffects} 
                       isReplaying={combatLog.length > 0 && !battleResult}
+                      currentTime={currentTime}
+                      onEffectClick={handleEffectClick}
                    />
 
                    {/* ENEMY ENTITY */}
@@ -612,6 +723,8 @@ function CombatPage({ playerData }) {
                       activeSlot={replayState.enemySlot}
                       activeEffects={replayState.enemyEffects} 
                       isReplaying={combatLog.length > 0 && !battleResult}
+                      currentTime={currentTime}
+                      onEffectClick={handleEffectClick}
                    />
                 </div>
 

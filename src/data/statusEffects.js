@@ -55,6 +55,13 @@ export const STATUS_REGISTRY = {
     description: 'Accuracy increased.',
     color: 'text-blue-600',
     icon: '/assets/icons/system/status/SODA_Icon_Status_AGI_Up.png'
+  },
+  'sunder': {
+    id: 'sunder',
+    name: 'Sunder',
+    description: 'Defense reduced by 30%.',
+    color: 'text-orange-700',
+    icon: '/assets/icons/system/status/SODA_Icon_Status_DEF_Down.png'
   }
 };
 

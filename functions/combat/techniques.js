@@ -18,7 +18,8 @@ const TECHNIQUE_REGISTRY = {
     power: 50,
     accuracy: 90,
     scalingStat: 'strength',
-    isDefault: true
+    isDefault: true,
+    effects: []
   },
   'iron_fist': {
     id: 'iron_fist',
@@ -30,12 +31,13 @@ const TECHNIQUE_REGISTRY = {
     power: 120,
     accuracy: 95,
     scalingStat: 'strength',
-    initialCharge: 0
+    initialCharge: 0,
+    effects: []
   },
 
-  // --- NEW: STATUS EFFECT TECHNIQUES ---
+  // --- STATUS EFFECT TECHNIQUES ---
   
-  // 1. DEBUFF EXAMPLE (Poison)
+  // 1. Single Debuff
   'poison_needle': {
     id: 'poison_needle',
     name: 'Poison Needle',
@@ -43,20 +45,21 @@ const TECHNIQUE_REGISTRY = {
     cooldown: 7,
     qiCostBase: 8,
     qiCostPct: 0.0,
-    power: 40, // Low initial damage
+    power: 40,
     accuracy: 100,
     scalingStat: 'strength',
-    // SCALABLE EFFECT DEFINITION
-    effect: { 
-      type: 'apply_status', 
-      target: 'enemy', // Apply to opponent
-      id: 'poison',    // Matches ID in statusEffects.js
-      duration: 12,    // Lasts 12 seconds
-      value: 5         // 5 Damage per tick
-    }
+    effects: [
+      { 
+        type: 'apply_status', 
+        target: 'enemy', 
+        id: 'poison', 
+        duration: 12, 
+        value: 5 
+      }
+    ]
   },
 
-  // 2. BUFF EXAMPLE (Stat Mod)
+  // 2. Single Buff
   'stone_skin': {
     id: 'stone_skin',
     name: 'Stone Skin',
@@ -65,17 +68,53 @@ const TECHNIQUE_REGISTRY = {
     qiCostBase: 12,
     qiCostPct: 0.05,
     power: 0,
-    // SCALABLE EFFECT DEFINITION
-    effect: { 
-      type: 'apply_status', 
-      target: 'self',      // Apply to user
-      id: 'iron_skin',     // Matches ID in statusEffects.js
-      duration: 10,        // Lasts 10 seconds
-      value: 10            // Adds 10 Defense (passed to statMod)
-    }
+    effects: [
+      { 
+        type: 'apply_status', 
+        target: 'self', 
+        id: 'iron_skin', 
+        duration: 10, 
+        value: 10 
+      }
+    ]
   },
 
-  // --- EXISTING SUPPORT/DEFENSE ---
+  // 3. NEW: Multi-Debuff Example
+  'venomous_strike': {
+    id: 'venomous_strike',
+    name: 'Venomous Strike',
+    type: TECH_TYPES.OFFENSE,
+    cooldown: 1,
+    qiCostBase: 15,
+    qiCostPct: 0.0,
+    power: 80,
+    accuracy: 90,
+    scalingStat: 'strength',
+    effects: [
+      { 
+        type: 'apply_status', 
+        target: 'enemy', 
+        id: 'poison', 
+        duration: 9, 
+        value: 5 
+      },
+      { 
+        type: 'apply_status', 
+        target: 'enemy', 
+        id: 'weakness', 
+        duration: 9, 
+        value: 5 
+      },
+      { 
+        type: 'apply_status', 
+        target: 'enemy', 
+        id: 'stun', 
+        duration: 9
+      }
+    ]
+  },
+
+  // --- SUPPORT/DEFENSE ---
   'spirit_shield': {
     id: 'spirit_shield',
     name: 'Spirit Shield',
@@ -83,10 +122,10 @@ const TECHNIQUE_REGISTRY = {
     cooldown: 8,
     qiCostBase: 10,
     qiCostPct: 0.05,
-    // Legacy effect type 'shield' is still handled by simulator for now,
-    // but in the future could be converted to a status effect "Shielded"
-    effect: { type: 'shield', value: 15 }, 
-    initialCharge: 0
+    initialCharge: 0,
+    effects: [
+      { type: 'shield', value: 15 }
+    ]
   },
   'gather_qi': {
     id: 'gather_qi',
@@ -95,8 +134,10 @@ const TECHNIQUE_REGISTRY = {
     cooldown: 6,
     qiCostBase: 0,
     qiCostPct: 0,
-    effect: { type: 'restore_qi', value: 25 },
-    initialCharge: 0
+    initialCharge: 0,
+    effects: [
+      { type: 'restore_qi', value: 25 }
+    ]
   },
   'gale_palm': {
     id: 'gale_palm',
@@ -108,7 +149,8 @@ const TECHNIQUE_REGISTRY = {
     power: 110,
     accuracy: 95,
     scalingStat: 'qi', 
-    initialCharge: 0
+    initialCharge: 0,
+    effects: []
   },
   'qi_burst': {
     id: 'qi_burst',
@@ -120,7 +162,8 @@ const TECHNIQUE_REGISTRY = {
     power: 150,
     accuracy: 85,
     scalingStat: 'strength',
-    initialCharge: 0
+    initialCharge: 0,
+    effects: []
   }
 };
 

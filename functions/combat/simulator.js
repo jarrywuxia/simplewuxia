@@ -1,20 +1,50 @@
+// functions/combat/simulator.js
+
 const { TECHNIQUE_REGISTRY } = require('./techniques');
 const { STATUS_EFFECTS } = require('./statusEffects'); 
 
 const DEFENSE_CONSTANT_K = 1; 
 
-// --- HELPER: RECALCULATE STATS ---
+// --- HELPER: RECALCULATE STATS (Flat + Percent) ---
 const recalculateStats = (entity) => {
+    // 1. Start with Base Stats
     let newStats = { ...entity.baseStats };
+    let percentModifiers = {}; // Store { strength: 10, defense: -20 } representing %
+
+    // 2. Iterate Active Effects
     entity.activeEffects.forEach(instance => {
         const def = STATUS_EFFECTS[instance.id];
         if (def && def.statMod) {
-            for (const [stat, value] of Object.entries(def.statMod)) {
-                if (newStats[stat] === undefined) newStats[stat] = 0;
-                newStats[stat] += value;
+            for (const [key, value] of Object.entries(def.statMod)) {
+                
+                // CHECK: Is this a Percentage Modifier? (e.g., "defense_pct")
+                if (key.endsWith('_pct')) {
+                    const statName = key.replace('_pct', ''); // "defense"
+                    percentModifiers[statName] = (percentModifiers[statName] || 0) + value;
+                } 
+                // ELSE: Flat Modifier
+                else {
+                    if (newStats[key] === undefined) newStats[key] = 0;
+                    newStats[key] += value;
+                }
             }
         }
     });
+
+    // 3. Apply Percentage Modifiers
+    // Formula: Final = (Base + Flat) * (1 + Sum% / 100)
+    for (const [statName, pctValue] of Object.entries(percentModifiers)) {
+        const currentVal = newStats[statName] || 0;
+        // Example: 100 def * (1 + (-20/100)) = 100 * 0.8 = 80
+        const multiplier = 1 + (pctValue / 100);
+        newStats[statName] = Math.floor(currentVal * multiplier);
+    }
+
+    // 4. Safety: Ensure no negative stats (optional but recommended)
+    for (const key in newStats) {
+        if (newStats[key] < 0) newStats[key] = 0;
+    }
+
     entity.stats = newStats;
 };
 
@@ -56,43 +86,60 @@ const applyDamageToTarget = (target, amount) => {
     return hpDamage; 
 };
 
-// --- UPDATED: EFFECT APPLICATION (Independent Stacks) ---
+// --- UPDATED: EFFECT APPLICATION (Supports Arrays) ---
 const applyTechniqueEffect = (tech, user, target, time) => {
-    let result = { damage: 0, heal: 0, qiRestore: 0, shield: 0, missed: false, statusApplied: null };
+    // Initialize result object with array for statuses
+    let result = { 
+        damage: 0, 
+        heal: 0, 
+        qiRestore: 0, 
+        shield: 0, 
+        missed: false, 
+        statusApplied: [] 
+    };
 
-    if (tech.effect) {
+    // 1. Calculate Hit Status (Offensive Moves)
+    let doesHit = true;
+    if (tech.type === 'offense' || tech.power > 0) {
+        doesHit = calculateHit(tech, target);
+        if (!doesHit) {
+            result.missed = true;
+        }
+    }
+
+    // 2. Normalize Effects (Array or Single Fallback)
+    const effects = tech.effects || (tech.effect ? [tech.effect] : []);
+
+    // 3. Process All Effects
+    effects.forEach(effectData => {
         // Shield
-        if (tech.effect.type === 'shield') {
-            const val = tech.effect.value;
+        if (effectData.type === 'shield') {
+            const val = effectData.value;
             user.shield += val;
-            result.shield = val;
+            result.shield += val;
         }
+        
         // Qi
-        if (tech.effect.type === 'restore_qi') {
-            const gain = tech.effect.value;
+        if (effectData.type === 'restore_qi') {
+            const gain = effectData.value;
             user.qi = Math.min(user.maxQi, user.qi + gain);
-            result.qiRestore = gain;
+            result.qiRestore += gain;
         }
-        // Status
-        if (tech.effect.type === 'apply_status') {
-            const effectData = tech.effect;
+        
+        // Status Application
+        if (effectData.type === 'apply_status') {
             const recipient = effectData.target === 'self' ? user : target;
+            
+            // If targeting enemy, respect the hit calculation
+            if (effectData.target === 'enemy' && !doesHit) return;
+
             const def = STATUS_EFFECTS[effectData.id];
-
-            let canApply = true;
-            if (effectData.target === 'enemy') {
-                if (!calculateHit(tech, target)) {
-                    canApply = false;
-                    result.missed = true;
-                }
-            }
-
-            if (canApply && def) {
+            if (def) {
                 // LOGIC CHANGE: Handle Stacking vs Non-Stacking
                 if (def.canStack) {
                     // Count existing stacks of this type
                     const currentStacks = recipient.activeEffects.filter(e => e.id === effectData.id).length;
-                    const max = def.maxStacks || 99; // Default high cap
+                    const max = def.maxStacks || 99; 
 
                     if (currentStacks < max) {
                          // Add NEW INDEPENDENT stack
@@ -101,11 +148,10 @@ const applyTechniqueEffect = (tech, user, target, time) => {
                             expireTime: time + effectData.duration,
                             nextTick: time + (def.tickInterval || 999),
                             value: effectData.value || 0,
-                            // Independent stacks don't use 'stacks' counter, they count as 1 entry each
-                            uniqueId: Math.random() // Unique ID for tracking ticks separately
+                            uniqueId: Math.random() 
                          });
                     } else {
-                         // Hit Cap: Refresh the oldest stack to maintain pressure
+                         // Refresh oldest stack
                          const oldest = recipient.activeEffects
                             .filter(e => e.id === effectData.id)
                             .sort((a, b) => a.expireTime - b.expireTime)[0];
@@ -113,7 +159,7 @@ const applyTechniqueEffect = (tech, user, target, time) => {
                          if (oldest) oldest.expireTime = time + effectData.duration;
                     }
                 } else {
-                    // Non-Stacking (Buffs/Stuns): Refresh existing
+                    // Non-Stacking: Refresh existing or add new
                     const existing = recipient.activeEffects.find(e => e.id === effectData.id);
                     if (existing) {
                         existing.expireTime = time + effectData.duration;
@@ -128,24 +174,16 @@ const applyTechniqueEffect = (tech, user, target, time) => {
                 }
                 
                 recalculateStats(recipient);
-                result.statusApplied = effectData.id;
+                result.statusApplied.push(effectData.id);
             }
         }
-    }
+    });
 
-    // Damage
-    if ((tech.type === 'offense' || tech.power > 0) && !result.missed) {
-        if (tech.power > 0) {
-            const isHit = calculateHit(tech, target);
-            if (isHit) {
-                const potentialDmg = calculateDamage(user, target, tech);
-                applyDamageToTarget(target, potentialDmg);
-                result.damage = potentialDmg;
-            } else {
-                result.missed = true;
-                result.statusApplied = null;
-            }
-        }
+    // 4. Apply Direct Damage (if hit)
+    if (tech.power > 0 && doesHit) {
+        const potentialDmg = calculateDamage(user, target, tech);
+        applyDamageToTarget(target, potentialDmg);
+        result.damage = potentialDmg;
     }
 
     return result;
@@ -180,7 +218,7 @@ const processStatusTicks = (entity, time) => {
         if (def.tickInterval > 0 && time >= instance.nextTick) {
             instance.nextTick += def.tickInterval;
             
-            // Note: Since stacks are now independent objects, multiplier is always 1 per object
+            // Note: Since stacks are independent objects, multiplier is always 1 per object
             const stackMultiplier = 1; 
 
             if (def.type === 'dot') {
@@ -331,14 +369,14 @@ exports.simulateCombat = (playerData, enemyData) => {
                       currentQi: Math.floor(actor.qi),
                       currentShield: actor.shield,
                       missed: res.missed,
-                      appliedEffectId: res.statusApplied 
+                      appliedEffectIds: res.statusApplied // Passed as Array
                   };
                   
                   if (res.missed) {
                       logEntry.type = 'miss';
                   } else if (res.damage > 0) {
                       logEntry.type = 'damage'; 
-                  } else if (res.statusApplied) {
+                  } else if (res.statusApplied.length > 0) {
                       logEntry.type = 'effect_apply'; 
                   } else if (res.shield > 0) {
                       logEntry.type = 'shield';

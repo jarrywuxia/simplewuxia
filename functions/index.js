@@ -5,7 +5,10 @@ const { createCharacter, allocateStat } = require('./features/character');
 const { useItem, equipItem, unequipItem } = require('./features/inventory');
 const { equipTechnique, pveFight } = require('./features/combat');
 const { sendChatMessage, cleanupChat } = require('./features/chat');
-const { debugGiveItem } = require('./features/debug'); // Add this
+const { debugGiveItem } = require('./features/debug'); 
+
+// --- IMPORT NEW FEATURE ---
+const { travel, exploreLocation } = require('./features/exploration');
 
 // --- EXPORT FUNCTIONS ---
 
@@ -31,3 +34,7 @@ exports.cleanupChat = cleanupChat;
 
 // Debug
 exports.debugGiveItem = debugGiveItem;
+
+// --- NEW EXPORTS ---
+exports.travel = travel;
+exports.exploreLocation = exploreLocation;

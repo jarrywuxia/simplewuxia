@@ -17,6 +17,7 @@ import InventoryPage from './InventoryPage';
 import ProfilePage from './ProfilePage';
 import CombatPage from './CombatPage';
 import TechniquesPage from './TechniquesPage';
+import LocationPage from './LocationPage';
 
 function Game({ playerData, onPlayerUpdate }) {
   const [currentPage, setCurrentPage] = useState('meditation');
@@ -343,6 +344,10 @@ function Game({ playerData, onPlayerUpdate }) {
         <div className="animate-fadeIn">
           {currentPage === 'meditation' && (
             <MeditationPage playerData={playerData} onPlayerUpdate={onPlayerUpdate} />
+          )}
+
+          {currentPage === 'location' && (
+            <LocationPage playerData={playerData} onPlayerUpdate={onPlayerUpdate} />
           )}
           
           {currentPage === 'inventory' && (

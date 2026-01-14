@@ -44,7 +44,7 @@ exports.getNewPlayerData = (userId, displayName) => ({
   
   // Metadata
   lastMeditationTime: 0,
-  currentLocation: 'bamboo-grove', 
+  currentLocation: 'longtian_village', 
   
   inventory: [],
   equipment: {

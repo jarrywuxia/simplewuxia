@@ -8,8 +8,8 @@ const { calculateTotalStats } = require('../utils');
 
 // --- HELPER: PICK RANDOM ENEMY ---
 const pickRandomEnemy = (locationId) => {
-  // SAFETY FIX: If location is invalid, default to village
-  const safeLocationId = LOCATIONS[locationId] ? locationId : 'bamboo_village';
+  // SAFETY FIX: If location is invalid, default to Longtian
+  const safeLocationId = LOCATIONS[locationId] ? locationId : 'longtian_village';
   const loc = LOCATIONS[safeLocationId];
 
   if (!loc || !loc.enemies || loc.enemies.length === 0) return null;
@@ -43,11 +43,11 @@ exports.travel = onCall(async (request) => {
     const data = playerDoc.data();
     
     // --- CRITICAL FIX FOR YOUR ERROR ---
-    // If the player is in 'bamboo-grove' (old data) or null, default to 'bamboo_village'
+    // If the player is in an invalid/old location, default to 'longtian_village'
     let currentLocationId = data.currentLocation;
     if (!LOCATIONS[currentLocationId]) {
-        console.log(`Player in invalid location '${currentLocationId}', resetting logic to bamboo_village`);
-        currentLocationId = 'bamboo_village';
+      console.log(`Player in invalid location '${currentLocationId}', resetting logic to longtian_village`);
+      currentLocationId = 'longtian_village';
     }
 
     const currentLocDef = LOCATIONS[currentLocationId];
@@ -87,9 +87,9 @@ exports.exploreLocation = onCall(async (request) => {
 
     const playerData = playerDoc.data();
     
-    // SAFETY FIX: Default to village if location is invalid
+    // SAFETY FIX: Default to Longtian if location is invalid
     let locationId = playerData.currentLocation;
-    if (!LOCATIONS[locationId]) locationId = 'bamboo_village';
+    if (!LOCATIONS[locationId]) locationId = 'longtian_village';
     
     const enemyData = pickRandomEnemy(locationId);
 

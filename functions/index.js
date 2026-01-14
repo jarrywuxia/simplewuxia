@@ -9,6 +9,7 @@ const { debugGiveItem } = require('./features/debug');
 
 // --- IMPORT NEW FEATURE ---
 const { travel, exploreLocation } = require('./features/exploration');
+const { buyItem } = require('./features/shop'); // Import new feature
 
 // --- EXPORT FUNCTIONS ---
 
@@ -38,3 +39,5 @@ exports.debugGiveItem = debugGiveItem;
 // --- NEW EXPORTS ---
 exports.travel = travel;
 exports.exploreLocation = exploreLocation;
+
+exports.buyItem = buyItem; // Export new function

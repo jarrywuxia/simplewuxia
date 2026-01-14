@@ -6,8 +6,8 @@ const {
     calculateDamage, 
     applyDamageToTarget, 
     recalculateStats,
-    getDamageMultiplier, // Import new helper
-    calculateMitigation // Import new helper
+    getDamageMultiplier,
+    calculateMitigation 
 } = require('./formulas');
 
 exports.applyTechniqueEffect = (tech, user, target, time) => {
@@ -31,7 +31,6 @@ exports.applyTechniqueEffect = (tech, user, target, time) => {
 
     // 2. Process Effects
     effects.forEach(effectData => {
-        // ... Shield and Qi logic remains the same ...
         if (effectData.type === 'shield') {
             const val = effectData.value;
             user.shield += val;
@@ -49,39 +48,34 @@ exports.applyTechniqueEffect = (tech, user, target, time) => {
 
             const def = STATUS_EFFECTS[effectData.id];
             if (def) {
-                // --- NEW SNAPSHOT LOGIC ---
+                // --- SNAPSHOT LOGIC ---
                 let storedValue = effectData.value || 0;
 
-                // If the effect has a 'power' (DoT scaling), calculate snapshot
                 if (effectData.power) {
                     const scalingStat = tech.scalingStat || 'strength';
                     const userStat = user.stats[scalingStat] || 0;
-                    const buffs = getDamageMultiplier(user, null); // Only user buffs apply to snapshot
+                    const buffs = getDamageMultiplier(user, null);
                     
-                    // The "Stored Value" is the Raw Potential Damage
-                    // Formula: (Strength * (Power/100)) * Buffs
+                    // KEEP PRECISION HERE: Do not round the snapshot
+                    // storedValue might be 15.68231...
                     storedValue = (userStat * (effectData.power / 100)) * buffs;
                 }
-                // --------------------------
+                // ---------------------
 
                 const statusObject = {
                     id: effectData.id,
                     expireTime: time + effectData.duration,
                     nextTick: time + (def.tickInterval || 999),
-                    value: storedValue, // Save the snapshot here
+                    value: storedValue, // Storing exact float
                     uniqueId: Math.random() 
                 };
 
-                // Add to list (Logic for stacking vs replacing remains same)
                 if (def.canStack) {
                     recipient.activeEffects.push(statusObject);
                 } else {
                     const existing = recipient.activeEffects.find(e => e.id === effectData.id);
                     if (existing) {
                         existing.expireTime = time + effectData.duration;
-                        // For non-stacking DoTs, usually overwrite the snapshot with the new stronger one?
-                        // For simplicity, we just refresh duration here.
-                        // To update damage, you'd do: existing.value = storedValue;
                         existing.value = storedValue; 
                     } else {
                         recipient.activeEffects.push(statusObject);
@@ -89,9 +83,12 @@ exports.applyTechniqueEffect = (tech, user, target, time) => {
                 }
                 
                 recalculateStats(recipient);
+                
+                // For the log/UI return, we might want to round purely for display
+                // but the internal logic kept the float.
                 result.statusApplied.push({
                     id: effectData.id,
-                    value: storedValue,
+                    value: Math.round(storedValue), 
                     duration: effectData.duration,
                     interval: def.tickInterval || 0
                 });
@@ -111,7 +108,7 @@ exports.applyTechniqueEffect = (tech, user, target, time) => {
 exports.processStatusTicks = (entity, time) => {
     const logs = [];
     
-    // 1. Expiration (Existing Logic)
+    // 1. Expiration
     const expired = entity.activeEffects.filter(e => e.expireTime <= time);
     if (expired.length > 0) {
         expired.forEach(e => {
@@ -135,17 +132,14 @@ exports.processStatusTicks = (entity, time) => {
             instance.nextTick += def.tickInterval;
             
             if (def.type === 'dot') {
-                // --- NEW DOT MITIGATION LOGIC ---
-                // instance.value holds the "Raw Snapshot Damage"
-                // We compare it against the target's CURRENT defense
                 const defense = entity.stats.defense || 0;
                 
-                // Use the mitigation formula
-                // Note: We use instance.value as the "Attack Force" for the ratio calculation
+                // Keep floats for calculation
                 const mitigation = calculateMitigation(instance.value, defense);
+                const exactDmg = instance.value * mitigation;
                 
-                // Final Tick Damage
-                const finalDmg = Math.max(1, Math.floor(instance.value * mitigation));
+                // ROUND ONLY HERE: Final application to HP
+                const finalDmg = Math.max(1, Math.round(exactDmg));
 
                 applyDamageToTarget(entity, finalDmg);
                 
@@ -158,10 +152,10 @@ exports.processStatusTicks = (entity, time) => {
                     currentHp: entity.hp
                 });
             }
-            // -------------------------------
             
             if (def.type === 'hot') {
-                const heal = Math.floor(instance.value);
+                // Round Healing
+                const heal = Math.round(instance.value);
                 entity.hp = Math.min(entity.maxHp, entity.hp + heal);
                 logs.push({
                     time: Number(time.toFixed(1)),

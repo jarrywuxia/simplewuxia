@@ -5,7 +5,9 @@ const {
     calculateHit, 
     calculateDamage, 
     applyDamageToTarget, 
-    recalculateStats 
+    recalculateStats,
+    getDamageMultiplier, // Import new helper
+    calculateMitigation // Import new helper
 } = require('./formulas');
 
 exports.applyTechniqueEffect = (tech, user, target, time) => {
@@ -22,22 +24,19 @@ exports.applyTechniqueEffect = (tech, user, target, time) => {
     let doesHit = true;
     if (tech.type === 'offense' || tech.power > 0) {
         doesHit = calculateHit(tech, target);
-        if (!doesHit) {
-            result.missed = true;
-        }
+        if (!doesHit) result.missed = true;
     }
 
-    // 2. Normalize Effects
     const effects = tech.effects || (tech.effect ? [tech.effect] : []);
 
-    // 3. Process Effects
+    // 2. Process Effects
     effects.forEach(effectData => {
+        // ... Shield and Qi logic remains the same ...
         if (effectData.type === 'shield') {
             const val = effectData.value;
             user.shield += val;
             result.shield += val;
         }
-        
         if (effectData.type === 'restore_qi') {
             const gain = effectData.value;
             user.qi = Math.min(user.maxQi, user.qi + gain);
@@ -46,48 +45,53 @@ exports.applyTechniqueEffect = (tech, user, target, time) => {
         
         if (effectData.type === 'apply_status') {
             const recipient = effectData.target === 'self' ? user : target;
-            
             if (effectData.target === 'enemy' && !doesHit) return;
 
             const def = STATUS_EFFECTS[effectData.id];
             if (def) {
-                if (def.canStack) {
-                    const currentStacks = recipient.activeEffects.filter(e => e.id === effectData.id).length;
-                    const max = def.maxStacks || 99; 
+                // --- NEW SNAPSHOT LOGIC ---
+                let storedValue = effectData.value || 0;
 
-                    if (currentStacks < max) {
-                         recipient.activeEffects.push({
-                            id: effectData.id,
-                            expireTime: time + effectData.duration,
-                            nextTick: time + (def.tickInterval || 999),
-                            value: effectData.value || 0,
-                            uniqueId: Math.random() 
-                         });
-                    } else {
-                         const oldest = recipient.activeEffects
-                            .filter(e => e.id === effectData.id)
-                            .sort((a, b) => a.expireTime - b.expireTime)[0];
-                         
-                         if (oldest) oldest.expireTime = time + effectData.duration;
-                    }
+                // If the effect has a 'power' (DoT scaling), calculate snapshot
+                if (effectData.power) {
+                    const scalingStat = tech.scalingStat || 'strength';
+                    const userStat = user.stats[scalingStat] || 0;
+                    const buffs = getDamageMultiplier(user, null); // Only user buffs apply to snapshot
+                    
+                    // The "Stored Value" is the Raw Potential Damage
+                    // Formula: (Strength * (Power/100)) * Buffs
+                    storedValue = (userStat * (effectData.power / 100)) * buffs;
+                }
+                // --------------------------
+
+                const statusObject = {
+                    id: effectData.id,
+                    expireTime: time + effectData.duration,
+                    nextTick: time + (def.tickInterval || 999),
+                    value: storedValue, // Save the snapshot here
+                    uniqueId: Math.random() 
+                };
+
+                // Add to list (Logic for stacking vs replacing remains same)
+                if (def.canStack) {
+                    recipient.activeEffects.push(statusObject);
                 } else {
                     const existing = recipient.activeEffects.find(e => e.id === effectData.id);
                     if (existing) {
                         existing.expireTime = time + effectData.duration;
+                        // For non-stacking DoTs, usually overwrite the snapshot with the new stronger one?
+                        // For simplicity, we just refresh duration here.
+                        // To update damage, you'd do: existing.value = storedValue;
+                        existing.value = storedValue; 
                     } else {
-                        recipient.activeEffects.push({
-                            id: effectData.id,
-                            expireTime: time + effectData.duration,
-                            nextTick: time + (def.tickInterval || 999),
-                            value: effectData.value || 0
-                        });
+                        recipient.activeEffects.push(statusObject);
                     }
                 }
                 
                 recalculateStats(recipient);
                 result.statusApplied.push({
                     id: effectData.id,
-                    value: effectData.value || 0,
+                    value: storedValue,
                     duration: effectData.duration,
                     interval: def.tickInterval || 0
                 });
@@ -95,7 +99,6 @@ exports.applyTechniqueEffect = (tech, user, target, time) => {
         }
     });
 
-    // 4. Direct Damage
     if (tech.power > 0 && doesHit) {
         const potentialDmg = calculateDamage(user, target, tech);
         applyDamageToTarget(target, potentialDmg);
@@ -108,9 +111,8 @@ exports.applyTechniqueEffect = (tech, user, target, time) => {
 exports.processStatusTicks = (entity, time) => {
     const logs = [];
     
-    // 1. Check Expiration
+    // 1. Expiration (Existing Logic)
     const expired = entity.activeEffects.filter(e => e.expireTime <= time);
-    
     if (expired.length > 0) {
         expired.forEach(e => {
             logs.push({
@@ -120,7 +122,6 @@ exports.processStatusTicks = (entity, time) => {
                 effectId: e.id
             });
         });
-        
         entity.activeEffects = entity.activeEffects.filter(e => e.expireTime > time);
         recalculateStats(entity);
     }
@@ -133,23 +134,34 @@ exports.processStatusTicks = (entity, time) => {
         if (def.tickInterval > 0 && time >= instance.nextTick) {
             instance.nextTick += def.tickInterval;
             
-            const stackMultiplier = 1; 
-
             if (def.type === 'dot') {
-                const dmg = instance.value * stackMultiplier;
-                applyDamageToTarget(entity, dmg);
+                // --- NEW DOT MITIGATION LOGIC ---
+                // instance.value holds the "Raw Snapshot Damage"
+                // We compare it against the target's CURRENT defense
+                const defense = entity.stats.defense || 0;
+                
+                // Use the mitigation formula
+                // Note: We use instance.value as the "Attack Force" for the ratio calculation
+                const mitigation = calculateMitigation(instance.value, defense);
+                
+                // Final Tick Damage
+                const finalDmg = Math.max(1, Math.floor(instance.value * mitigation));
+
+                applyDamageToTarget(entity, finalDmg);
+                
                 logs.push({
                     time: Number(time.toFixed(1)),
                     actor: entity.id,
                     type: 'effect_tick',
                     effectId: instance.id,
-                    damage: dmg,
+                    damage: finalDmg,
                     currentHp: entity.hp
                 });
             }
+            // -------------------------------
             
             if (def.type === 'hot') {
-                const heal = instance.value * stackMultiplier;
+                const heal = Math.floor(instance.value);
                 entity.hp = Math.min(entity.maxHp, entity.hp + heal);
                 logs.push({
                     time: Number(time.toFixed(1)),

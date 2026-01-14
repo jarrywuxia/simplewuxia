@@ -1,3 +1,5 @@
+// src/pages/CombatPage.js
+
 import React, { useState, useRef, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
@@ -39,7 +41,7 @@ const stylesKeyframes = `
   }
 `;
 
-const DEBUFF_IDS = ['poison', 'burn', 'stun', 'weakness'];
+const DEBUFF_IDS = ['poison', 'burn', 'stun', 'weakness', 'sunder'];
 
 // --- SUB-COMPONENT: COMBAT ENTITY ---
 const CombatEntity = ({ 
@@ -196,7 +198,7 @@ const CombatEntity = ({
   );
 };
 
-// --- TOOLTIP COMPONENT (UPDATED FOR MOBILE SAFETY) ---
+// --- TOOLTIP COMPONENT ---
 const EffectTooltip = ({ data, onClose }) => {
   if (!data) return null;
   const { x, y, def, effectInstance } = data;
@@ -205,7 +207,10 @@ const EffectTooltip = ({ data, onClose }) => {
   let desc = def.description;
   if (effectInstance) {
       if (effectInstance.value !== undefined) {
-          desc = desc.replace('{val}', effectInstance.value);
+          // --- ROUNDING FIX ---
+          // value IS the pre-mitigation number (Raw Snapshot)
+          // We round it here so the UI is clean.
+          desc = desc.replace('{val}', Math.round(effectInstance.value));
       } else {
           desc = desc.replace('{val}', '?');
       }
@@ -218,36 +223,22 @@ const EffectTooltip = ({ data, onClose }) => {
   }
 
   // --- POSITIONING LOGIC ---
-  // The goal is to keep the tooltip fully on screen.
-  // We use w-48, which is 12rem => 192px.
-  // Add a bit of padding/border, treat it as ~200px.
   const TOOLTIP_WIDTH = 192; 
-  const SCREEN_PADDING = 8; // min distance from edge
+  const SCREEN_PADDING = 8; 
 
-  // 1. Calculate ideal left position (centered on icon)
   let leftPos = x - (TOOLTIP_WIDTH / 2);
-
-  // 2. Clamp to screen edges
   if (leftPos < SCREEN_PADDING) {
       leftPos = SCREEN_PADDING;
   } else if (leftPos + TOOLTIP_WIDTH > window.innerWidth - SCREEN_PADDING) {
       leftPos = window.innerWidth - TOOLTIP_WIDTH - SCREEN_PADDING;
   }
 
-  // 3. Set Box Style
   const style = {
-    top: y - 100, // Shift up higher to avoid finger coverage on mobile
+    top: y - 100, 
     left: leftPos
   };
 
-  // 4. Calculate Arrow Position
-  // The arrow needs to point to 'x' (the icon center).
-  // Relative to the tooltip container (which starts at leftPos):
-  // arrowOffset = IconX - ContainerX - HalfArrowWidth
-  const arrowOffset = x - leftPos - 6; // -6 accounts for half of w-3 (12px)
-
-  // Clamp arrow so it doesn't detach from the box corners if the icon is very close to edge
-  // (e.g. if icon is at x=5, arrow shouldn't be at x=-1)
+  const arrowOffset = x - leftPos - 6; 
   const safeArrowOffset = Math.max(10, Math.min(TOOLTIP_WIDTH - 22, arrowOffset));
 
   return (
@@ -263,6 +254,12 @@ const EffectTooltip = ({ data, onClose }) => {
         <div className="text-[10px] text-ink-light leading-snug mb-2">
           {desc}
         </div>
+        {/* ADDED: EXPLANATION FOR DOTS */}
+        {def.id === 'poison' || def.id === 'burn' ? (
+             <div className="text-[9px] text-gray-400 italic border-t border-gray-100 pt-1 mt-1">
+                 *Potential Dmg (Before Def)
+             </div>
+        ) : null}
         
         {/* Dynamic Arrow */}
         <div 
@@ -288,7 +285,7 @@ function CombatPage({ playerData }) {
 
   const [replayState, setReplayState] = useState({
     playerHp: 100, playerMaxHp: 100, playerQi: 50, playerMaxQi: 50, playerShield: 0, playerSlot: 0, 
-    playerEffects: [], // Array of objects { id, expireTime, value, interval }
+    playerEffects: [], 
     enemyHp: 100, enemyMaxHp: 100, enemyQi: 0, enemyMaxQi: 0, enemyShield: 0, enemySlot: 0, 
     enemyEffects: []
   });
@@ -318,7 +315,6 @@ function CombatPage({ playerData }) {
 
   const handleEffectClick = (e, def, effectInstance) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    // Use center of the icon for better positioning calculations
     setTooltipData({
       x: rect.left + (rect.width / 2),
       y: rect.top,
@@ -443,15 +439,10 @@ function CombatPage({ playerData }) {
                     else newState.enemyShield = entry.currentShield;
                 }
 
-                // 2. Add Status Effect (UPDATED for Dynamic Objects)
-                // Only process effect addition on specific event types
+                // 2. Add Status Effect
                 const isApplicationEvent = ['technique', 'damage', 'effect_apply', 'shield', 'restore_qi'].includes(entry.type);
                 
-                // Newer backend logic uses 'appliedEffects' (array of objects with value)
-                // Older/Simple logs might use 'appliedEffectIds' or 'effectId'
                 const newEffectsList = entry.appliedEffects || []; 
-                
-                // Fallback for legacy logs or single ID events
                 if (newEffectsList.length === 0) {
                     if (entry.appliedEffectIds) {
                          entry.appliedEffectIds.forEach(id => newEffectsList.push({ id, value: entry.value || 0 }));
@@ -469,30 +460,25 @@ function CombatPage({ playerData }) {
                       if (entry.actor === 'player') targetIsPlayer = !isDebuff;
                       else targetIsPlayer = isDebuff;
 
-                      // Count current stacks to find which future expiry belongs to this new stack (FIFO)
                       const currentList = targetIsPlayer ? newState.playerEffects : newState.enemyEffects;
                       const activeStacks = currentList.filter(e => e.id === effectId).length;
 
-                      // Find all future expiry events for this ID/Actor
                       const futureExpires = data.log.slice(i).filter(e => 
                         e.type === 'effect_expire' && 
                         e.effectId === effectId && 
                         e.actor === (targetIsPlayer ? 'player' : 'enemy')
                       );
 
-                      // If we have N active, this new application corresponds to the (N)th expiry found in future
                       const expireEvent = futureExpires[activeStacks] || futureExpires[futureExpires.length - 1];
                       const expireTime = expireEvent ? expireEvent.time : (entry.time + 10);
                       
-                      // CREATE FULL EFFECT OBJECT
                       const effectObj = { 
                           id: effectId, 
                           expireTime, 
-                          value: effData.value,     // Capture Value
-                          interval: effData.interval // Capture Interval if present
+                          value: effData.value,
+                          interval: effData.interval 
                       };
 
-                      // APPEND to list (do not filter out old ones)
                       if (targetIsPlayer) {
                         newState.playerEffects = [...newState.playerEffects, effectObj];
                       } else {
@@ -501,14 +487,10 @@ function CombatPage({ playerData }) {
                   });
                 }
 
-                // 3. Remove Status Effect (FIXED: Targeted Removal)
+                // 3. Remove Status Effect
                 if (entry.type === 'effect_expire') {
                     const list = (entry.actor === 'player') ? newState.playerEffects : newState.enemyEffects;
-                    
-                    // Find specific stack that expires at this time (allow small margin for floats)
                     const indexToRemove = list.findIndex(e => e.id === entry.effectId && Math.abs(e.expireTime - entry.time) < 0.5);
-                    
-                    // If exact match not found, remove the oldest of that ID
                     const fallbackIndex = list.findIndex(e => e.id === entry.effectId);
                     
                     const removeIdx = indexToRemove !== -1 ? indexToRemove : fallbackIndex;
@@ -573,7 +555,6 @@ function CombatPage({ playerData }) {
   const renderLogEntry = (entry, index) => {
     if (!entry) return null;
 
-    // --- EXPIRATION LOG ---
     if (entry.type === 'effect_expire') {
         const isPlayer = entry.actor === 'player';
         const def = STATUS_REGISTRY[entry.effectId];
@@ -600,7 +581,6 @@ function CombatPage({ playerData }) {
     if (entry.type === 'effect_tick') {
       const isPlayer = entry.actor === 'player';
       const def = STATUS_REGISTRY[entry.effectId];
-      // Determine the name of the person suffering the effect
       const targetName = isPlayer ? 'You' : selectedEnemy.name; 
         
       if (entry.heal) {
@@ -626,13 +606,11 @@ function CombatPage({ playerData }) {
     
     if (entry.type === 'stunned') {
         const isPlayer = entry.actor === 'player';
-        // FIX: Explicitly show WHO is stunned
         const subject = isPlayer ? 'You are' : `${selectedEnemy.name} is`;
         
         return (
             <div key={index} className={`text-[10px] mb-1 font-bold ${isPlayer ? 'text-right text-yellow-600' : 'text-left text-yellow-700'}`}>
                 <span className="font-mono text-gray-400 mr-2">[{entry.time}s]</span>
-                {/* Updated Text */}
                  {subject} Stunned! (Turn Skipped)
             </div>
         );
@@ -641,7 +619,6 @@ function CombatPage({ playerData }) {
     if (entry.type === 'damage') {
       const isPlayer = entry.actor === 'player';
       
-      // Handle the different ways effects might be stored in the log
       let appliedDefs = [];
       if (entry.appliedEffects && entry.appliedEffects.length > 0) {
           appliedDefs = entry.appliedEffects.map(eff => ({ def: STATUS_REGISTRY[eff.id], val: eff.value }));
@@ -661,7 +638,7 @@ function CombatPage({ playerData }) {
                if (!item.def) return null;
                return (
                  <span key={idx} className={`block text-[10px] font-bold ${item.def.color}`}>
-                    + Applied {item.def.name} {item.val ? `(${item.val})` : ''}
+                    + Applied {item.def.name} {item.val ? `(${Math.round(item.val)})` : ''}
                  </span>
                );
             })}
@@ -670,7 +647,6 @@ function CombatPage({ playerData }) {
       );
     }
     
-    // Existing log types
     if (entry.type === 'error') return <div key={index} className="text-red-600 font-bold text-center text-xs my-2 border border-red-200 bg-red-50 p-1">{entry.text}</div>;
     if (entry.type === 'miss') {
       const isPlayer = entry.actor === 'player';

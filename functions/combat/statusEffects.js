@@ -1,78 +1,85 @@
 // functions/combat/statusEffects.js
 
-/**
- * STATUS EFFECT REGISTRY
- * 
- * Scalability Guide:
- * - type: 'dot' (Damage over Time), 'hot' (Heal over Time), 'stat_mod' (Buff/Debuff), 'control' (Stun/Freeze)
- * - canStack: If true, applying it again adds a separate instance or increments a counter.
- * - canAct: If false, the entity skips their turn (for Stuns).
- * - statMod: Object containing { statName: value } to apply while active.
- */
-
 const STATUS_EFFECTS = {
   // --- DAMAGE OVER TIME (DoT) ---
   'poison': {
     id: 'poison',
     name: 'Poison',
     type: 'dot',
-    tickInterval: 3.0, // Damage happens every 3 seconds
-    canStack: true,    // You can be poisoned multiple times
+    tickInterval: 3.0,
+    canStack: true,
     maxStacks: 5
-    // Note: Damage value is usually determined by the Technique that applied it
+    // Note: DoT damage usually relies on the Caster's stats at application time
+    // or a flat value passed by the technique.
   },
   'burn': {
     id: 'burn',
     name: 'Burn',
     type: 'dot',
     tickInterval: 2.0,
-    canStack: false    // Re-applying usually just resets duration
+    canStack: false
   },
 
-  // --- CROWD CONTROL (CC) ---
+  // --- CROWD CONTROL ---
   'stun': {
     id: 'stun',
     name: 'Stunned',
     type: 'control',
-    canAct: false,     // The crucial flag for the simulator
+    canAct: false,
     canStack: false
   },
 
-  // --- STAT MODIFIERS (Buffs/Debuffs) ---
+  // --- INFINITE SCALING STAT MODIFIERS ---
+  
+  // 1. Stat Debuff: Reduces Base Strength by %
   'weakness': {
     id: 'weakness',
     name: 'Weakness',
     type: 'stat_mod',
-    statMod: { strength: -5 }, // Simulator will look for this object
+    // Reduces Strength (and thus Attack) by 20%. 
+    // This scales infinitely.
+    statMod: { strength_pct: -20 }, 
     canStack: false
   },
+
+  // 2. Stat Buff: Increases Base Defense by %
   'iron_skin': {
     id: 'iron_skin',
     name: 'Iron Skin',
     type: 'stat_mod',
-    statMod: { defense: 10 },
+    // Increases Defense by 30%.
+    // Helps maintain the Mitigation Ratio against strong enemies.
+    statMod: { defense_pct: 30 },
     canStack: false
   },
+
+  // 3. Trade-off Buff: More Damage, Less Defense
   'enrage': {
     id: 'enrage',
     name: 'Enrage',
     type: 'stat_mod',
-    statMod: { strength: 15, defense: -5 }, // Trade-off buff
+    // Additive Damage Multiplier (+20%)
+    // Defense Stat Reduction (-15%)
+    statMod: { damage_pct: 20, defense_pct: -15 }, 
     canStack: false
   },
-  'regeneration': {
-    id: 'regeneration',
-    name: 'Regeneration',
-    type: 'buff',
-    tickInterval: 4.0,
-    canStack: false
-  },
+  
+  // 4. Pure Stat Debuff
   'sunder': {
     id: 'sunder',
     name: 'Sunder',
     type: 'stat_mod',
-    // Apply -30% to Defense
+    // Reduces Defense by 30%. 
+    // Greatly impacts the Mitigation Ratio calculation.
     statMod: { defense_pct: -30 }, 
+    canStack: false
+  },
+  
+  'regeneration': {
+    id: 'regeneration',
+    name: 'Regeneration',
+    type: 'hot',
+    tickInterval: 4.0,
     canStack: false
   }
 };

@@ -6,9 +6,7 @@ export const STATUS_REGISTRY = {
     id: 'poison',
     name: 'Poison',
     description: 'Taking {val} damage every {tick}s.',
-    // Using a green color for UI text
     color: 'text-emerald-600', 
-    // Generic "Bio/Poison" icon
     icon: '/assets/icons/system/status/SODA_StatusState_Poison.png'
   },
   'burn': {
@@ -28,9 +26,18 @@ export const STATUS_REGISTRY = {
   'weakness': {
     id: 'weakness',
     name: 'Weakness',
-    description: 'Strength reduced by {val}.',
+    // UPDATED: Now indicates percentage
+    description: 'Strength reduced by 20%.',
     color: 'text-gray-500',
     icon: '/assets/icons/system/status/SODA_Icon_Status_ATK_Down.png'
+  },
+  'sunder': {
+    id: 'sunder',
+    name: 'Sunder',
+    // UPDATED: Now indicates percentage
+    description: 'Defense reduced by 30%.',
+    color: 'text-orange-700',
+    icon: '/assets/icons/system/status/SODA_Icon_Status_DEF_Down.png'
   },
 
   // --- BUFFS ---
@@ -44,10 +51,18 @@ export const STATUS_REGISTRY = {
   'iron_skin': {
     id: 'iron_skin',
     name: 'Iron Skin',
-    description: 'Defense increased by +{val}.',
+    // UPDATED: Now indicates percentage
+    description: 'Defense increased by 30%.',
     color: 'text-slate-600',
-    // Reusing the Armor icon represents "tough skin" well
     icon: '/assets/icons/items/armor/SODA_Icon_Armor_Heavy_Chest.png'
+  },
+  'enrage': {
+    id: 'enrage',
+    name: 'Enrage',
+    // NEW: Matches the backend logic added previously
+    description: 'Damage +20%, Defense -15%.',
+    color: 'text-red-700',
+    icon: '/assets/icons/system/status/SODA_Icon_Status_ATK_Up.png'
   },
   'focused': {
     id: 'focused',
@@ -55,13 +70,6 @@ export const STATUS_REGISTRY = {
     description: 'Accuracy increased by +{val}.',
     color: 'text-blue-600',
     icon: '/assets/icons/system/status/SODA_Icon_Status_AGI_Up.png'
-  },
-  'sunder': {
-    id: 'sunder',
-    name: 'Sunder',
-    description: 'Defense reduced by {val}%.',
-    color: 'text-orange-700',
-    icon: '/assets/icons/system/status/SODA_Icon_Status_DEF_Down.png'
   }
 };
 

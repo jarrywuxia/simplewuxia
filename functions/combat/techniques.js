@@ -15,7 +15,7 @@ const TECHNIQUE_REGISTRY = {
     cooldown: 10,
     qiCostBase: 0,
     qiCostPct: 0,
-    power: 50,
+    power: 50, // 50% of Atk
     accuracy: 90,
     scalingStat: 'strength',
     isDefault: true,
@@ -28,7 +28,7 @@ const TECHNIQUE_REGISTRY = {
     cooldown: 3,
     qiCostBase: 5,
     qiCostPct: 0.0,
-    power: 120,
+    power: 120, // 120% of Atk (1.2 multiplier)
     accuracy: 95,
     scalingStat: 'strength',
     initialCharge: 0,
@@ -36,16 +36,14 @@ const TECHNIQUE_REGISTRY = {
   },
 
   // --- STATUS EFFECT TECHNIQUES ---
-  
-  // 1. Single Debuff
   'poison_needle': {
     id: 'poison_needle',
     name: 'Poison Needle',
     type: TECH_TYPES.OFFENSE,
-    cooldown: 7,
+    cooldown: 8,
     qiCostBase: 8,
     qiCostPct: 0.0,
-    power: 40,
+    power: 40, // Immediate hit damage (40% of Str)
     accuracy: 100,
     scalingStat: 'strength',
     effects: [
@@ -54,12 +52,13 @@ const TECHNIQUE_REGISTRY = {
         target: 'enemy', 
         id: 'poison', 
         duration: 12, 
-        value: 5 
+        // CHANGED: Removed 'value: 5'
+        // ADDED: 'power: 30' -> Each tick deals 30% of your Str (Snapshotted)
+        power: 30 
       }
     ]
   },
 
-  // 2. Single Buff
   'stone_skin': {
     id: 'stone_skin',
     name: 'Stone Skin',
@@ -73,13 +72,12 @@ const TECHNIQUE_REGISTRY = {
         type: 'apply_status', 
         target: 'self', 
         id: 'iron_skin', 
-        duration: 10, 
-        value: 10 
+        duration: 10 
+        // No 'value' needed for % buff, it's defined in statusEffects.js
       }
     ]
   },
 
-  // 3. NEW: Multi-Debuff Example
   'venomous_strike': {
     id: 'venomous_strike',
     name: 'Venomous Strike',
@@ -96,20 +94,20 @@ const TECHNIQUE_REGISTRY = {
         target: 'enemy', 
         id: 'poison', 
         duration: 9, 
-        value: 2 
+        // Poison scaling: 20% of Str per tick
+        power: 20 
       },
       { 
         type: 'apply_status', 
         target: 'enemy', 
         id: 'weakness', 
-        duration: 9, 
-        value: 5 
+        duration: 9
       },
       { 
         type: 'apply_status', 
         target: 'enemy', 
         id: 'stun', 
-        duration: 9
+        duration: 2
       }
     ]
   },
@@ -124,7 +122,7 @@ const TECHNIQUE_REGISTRY = {
     qiCostPct: 0.05,
     initialCharge: 0,
     effects: [
-      { type: 'shield', value: 15 }
+      { type: 'shield', value: 15 } // Shields might typically stay flat or scale with Max HP in future
     ]
   },
   'gather_qi': {
@@ -148,7 +146,7 @@ const TECHNIQUE_REGISTRY = {
     qiCostPct: 0.05,
     power: 110,
     accuracy: 95,
-    scalingStat: 'qi', 
+    scalingStat: 'qi', // Uses QI instead of Strength
     initialCharge: 0,
     effects: []
   },

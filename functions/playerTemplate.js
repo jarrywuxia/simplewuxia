@@ -1,6 +1,5 @@
 // functions/playerTemplate.js
 
-const XP_PER_STAGE = 100;
 const MAX_ENERGY = 100;
 
 exports.getNewPlayerData = (userId, displayName) => ({
@@ -12,7 +11,7 @@ exports.getNewPlayerData = (userId, displayName) => ({
   realmIndex: 0, 
   stageIndex: 0, 
   experience: 0,
-  experienceNeeded: XP_PER_STAGE,
+  experienceNeeded: 100,
   
   // COMBAT & TECHNIQUE DATA
   learnedTechniques: ['iron_fist', 'gather_qi', 'spirit_shield'],

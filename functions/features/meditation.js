@@ -69,25 +69,50 @@ exports.meditate = onCall(async (request) => {
         let newRealmIndex = data.realmIndex || 0;
         let newStageIndex = data.stageIndex || 0;
         let newPoints = data.unallocatedPoints || 0;
-        let newXpNeeded = data.experienceNeeded || XP_PER_STAGE;
+        
+        // 1. Get the Current Requirement
+        // Safety check: if data.experienceNeeded is missing, look it up from constants
+        let currentRequirement = data.experienceNeeded;
+        if (!currentRequirement) {
+             const realmData = REALMS[newRealmIndex];
+             // Default to 100 if something goes wrong with the arrays
+             currentRequirement = (realmData && realmData.stageXp[newStageIndex]) || 100;
+        }
+
         let extraMessage = "";
 
-        if (newXp >= newXpNeeded) {
+        // 2. Check for Level Up
+        if (newXp >= currentRequirement) {
             const currentRealm = REALMS[newRealmIndex];
-            if (currentRealm) {
-                if (newStageIndex + 1 < currentRealm.stages.length) {
-                    newStageIndex++;
-                    newXp -= newXpNeeded;
-                    extraMessage = ` Advanced to ${currentRealm.stages[newStageIndex]}!`;
-                } else if (newRealmIndex + 1 < REALMS.length) {
-                    newRealmIndex++;
-                    newStageIndex = 0;
-                    newXp -= newXpNeeded;
-                    newXpNeeded = XP_PER_STAGE * (newRealmIndex + 1);
-                    extraMessage = ` BREAKTHROUGH to ${REALMS[newRealmIndex].name}!`;
-                }
-                newPoints += STAT_POINTS_PER_STAGE;
+            
+            // Check if we can advance stage within current realm
+            if (currentRealm && newStageIndex + 1 < currentRealm.stages.length) {
+                newStageIndex++;
+                newXp -= currentRequirement; // Subtract the cost
+                extraMessage = ` Advanced to ${currentRealm.stages[newStageIndex]}!`;
+            } 
+            // Check if we can advance to NEXT realm
+            else if (newRealmIndex + 1 < REALMS.length) {
+                newRealmIndex++;
+                newStageIndex = 0; // Reset to Initial
+                newXp -= currentRequirement; // Subtract the cost
+                extraMessage = ` BREAKTHROUGH to ${REALMS[newRealmIndex].name}!`;
+            } else {
+                // Max Level Reached
+                newXp = currentRequirement; // Cap XP
             }
+
+            // Grant Stat Points
+            newPoints += STAT_POINTS_PER_STAGE;
+        }
+
+        // 3. Set the Requirement for the NEXT level
+        // We look up the NEW realm/stage in your custom arrays
+        const nextRealmData = REALMS[newRealmIndex];
+        let newXpNeeded = 100; // Fallback
+        
+        if (nextRealmData && nextRealmData.stageXp && nextRealmData.stageXp[newStageIndex]) {
+            newXpNeeded = nextRealmData.stageXp[newStageIndex];
         }
 
         // Prepare Base Updates

@@ -1,6 +1,6 @@
 // src/pages/CombatPage.js
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
 import { ENEMIES } from '../data/enemies';
@@ -56,12 +56,15 @@ const CombatEntity = ({
   const prevHp = useRef(stats.hp);
 
   useEffect(() => {
+    // Only animate if replaying AND stats actually changed
     if (!isReplaying) return;
-    if (stats.hp < prevHp.current) {
+    
+    // Tiny threshold to prevent floating point jitter triggering animations
+    if (prevHp.current - stats.hp > 0.5) {
       setIsHurt(true);
       setTimeout(() => setIsHurt(false), 300);
     }
-    if (stats.hp > prevHp.current) {
+    if (stats.hp - prevHp.current > 0.5) {
       setIsHealed(true);
       setTimeout(() => setIsHealed(false), 500);
     }
@@ -203,18 +206,13 @@ const EffectTooltip = ({ data, onClose }) => {
   if (!data) return null;
   const { x, y, def, effectInstance } = data;
   
-  // Dynamic Description Parsing: Inject values into placeholders
   let desc = def.description;
   if (effectInstance) {
       if (effectInstance.value !== undefined) {
-          // --- ROUNDING FIX ---
-          // value IS the pre-mitigation number (Raw Snapshot)
-          // We round it here so the UI is clean.
           desc = desc.replace('{val}', Math.round(effectInstance.value));
       } else {
           desc = desc.replace('{val}', '?');
       }
-      
       if (effectInstance.interval !== undefined) {
           desc = desc.replace('{tick}', effectInstance.interval);
       } else {
@@ -222,7 +220,6 @@ const EffectTooltip = ({ data, onClose }) => {
       }
   }
 
-  // --- POSITIONING LOGIC ---
   const TOOLTIP_WIDTH = 192; 
   const SCREEN_PADDING = 8; 
 
@@ -261,7 +258,6 @@ const EffectTooltip = ({ data, onClose }) => {
              </div>
         ) : null}
         
-        {/* Dynamic Arrow */}
         <div 
             className="absolute -bottom-1.5 w-3 h-3 bg-white border-b-2 border-r-2 border-ink rotate-45"
             style={{ left: safeArrowOffset }}
@@ -290,17 +286,55 @@ function CombatPage({ playerData }) {
     enemyEffects: []
   });
 
-  useEffect(() => {
-    if (playerData) {
-        setReplayState(prev => ({
-            ...prev,
+  // --- HELPER: Find first non-null slot ---
+  const findNextActiveSlot = (loadout, currentSlotIndex) => {
+    if (!loadout || loadout.length === 0) return 0;
+    for (let i = 1; i <= 5; i++) {
+        const nextIndex = (currentSlotIndex + i) % 5;
+        if (loadout[nextIndex] !== null && loadout[nextIndex] !== undefined) {
+            return nextIndex;
+        }
+    }
+    return 0;
+  };
+
+  // --- CORE HELPER: RESET EVERYTHING ---
+  // This resets the UI to a "Ready to Fight" state (Full HP, No Logs)
+  const resetCombatState = useCallback(() => {
+    setCombatLog([]);
+    setBattleResult(null);
+    setCurrentTime(0);
+
+    if (playerData && selectedEnemy) {
+        setReplayState({
             playerHp: playerData.stats.maxHp,
             playerMaxHp: playerData.stats.maxHp,
             playerQi: playerData.stats.qi,
+            playerMaxQi: playerData.stats.qi,
+            playerShield: 0,
+            playerSlot: findNextActiveSlot(playerData.equippedTechniques, -1), // Start fresh
+            playerEffects: [], 
+            enemyHp: selectedEnemy.stats.maxHp,
+            enemyMaxHp: selectedEnemy.stats.maxHp,
+            enemyQi: selectedEnemy.stats.qi || 0,
+            enemyMaxQi: selectedEnemy.stats.qi || 0,
+            enemyShield: 0,
+            enemySlot: findNextActiveSlot(selectedEnemy.loadout, -1), // Start fresh
+            enemyEffects: [] 
+        });
+    }
+  }, [playerData, selectedEnemy]);
+
+  // Initial Data Sync for Max Stats
+  useEffect(() => {
+    if (playerData && !combatLog.length) {
+        setReplayState(prev => ({
+            ...prev,
+            playerMaxHp: playerData.stats.maxHp,
             playerMaxQi: playerData.stats.qi
         }));
     }
-  }, [playerData]);
+  }, [playerData, combatLog.length]);
 
   useEffect(() => {
     if (logContainerRef.current) {
@@ -323,41 +357,14 @@ function CombatPage({ playerData }) {
     });
   };
 
+  // --- RESET WHEN SWITCHING ENEMY ---
   useEffect(() => {
     if (selectedEnemy) {
-        setCombatLog([]);
-        setBattleResult(null);
-        setCurrentTime(0);
-        setReplayState({
-            playerHp: playerData?.stats?.maxHp || 100,
-            playerMaxHp: playerData?.stats?.maxHp || 100,
-            playerQi: playerData?.stats?.qi || 50,
-            playerMaxQi: playerData?.stats?.qi || 50,
-            playerShield: 0,
-            playerSlot: 0,
-            playerEffects: [], 
-            enemyHp: selectedEnemy.stats.maxHp,
-            enemyMaxHp: selectedEnemy.stats.maxHp,
-            enemyQi: selectedEnemy.stats.qi || 0,
-            enemyMaxQi: selectedEnemy.stats.qi || 0,
-            enemyShield: 0,
-            enemySlot: 0,
-            enemyEffects: [] 
-        });
+        resetCombatState();
     }
-  }, [selectedEnemy, playerData]);
+  }, [selectedEnemy, resetCombatState]);
 
-  const findNextActiveSlot = (loadout, currentSlotIndex) => {
-    if (!loadout || loadout.length === 0) return 0;
-    for (let i = 1; i <= 5; i++) {
-        const nextIndex = (currentSlotIndex + i) % 5;
-        if (loadout[nextIndex] !== null && loadout[nextIndex] !== undefined) {
-            return nextIndex;
-        }
-    }
-    return 0;
-  };
-
+  // --- FIGHT LOGIC ---
   const handleFight = async () => {
     if (!selectedEnemy || loading) return;
     if (playerData.energy < 5) {
@@ -366,21 +373,16 @@ function CombatPage({ playerData }) {
     }
     
     setLoading(true);
-    setCombatLog([]); 
-    setBattleResult(null);
-    setCurrentTime(0);
-
-    setReplayState(prev => ({ 
-        ...prev, 
-        playerSlot: findNextActiveSlot(playerData.equippedTechniques, -1),
-        enemySlot: findNextActiveSlot(selectedEnemy.loadout, -1)
-    }));
+    
+    // 1. HARD RESET immediately so the UI is clean while loading
+    resetCombatState();
 
     try {
       const fightFn = httpsCallable(functions, 'pveFight');
       const result = await fightFn({ enemyId: selectedEnemy.id });
       const data = result.data;
 
+      // Update Max values from server truth just in case
       if (data.initialStats) {
           setReplayState(prev => ({
               ...prev,
@@ -391,9 +393,7 @@ function CombatPage({ playerData }) {
               enemyHp: data.initialStats.enemyHp,
               enemyMaxHp: data.initialStats.enemyMaxHp,
               enemyQi: data.initialStats.enemyMaxQi || 0,
-              enemyMaxQi: data.initialStats.enemyMaxQi || 0,
-              playerSlot: findNextActiveSlot(playerData.equippedTechniques, -1),
-              enemySlot: findNextActiveSlot(selectedEnemy.loadout, -1)
+              enemyMaxQi: data.initialStats.enemyMaxQi || 0
           }));
       }
 
@@ -824,7 +824,9 @@ function CombatPage({ playerData }) {
                           ) : (
                             <div className="text-red-800 font-bold text-lg uppercase tracking-widest">Defeated</div>
                           )}
-                          <button onClick={() => {setCombatLog([]); setBattleResult(null);}} className="mt-2 text-xs font-bold underline hover:text-ink">
+                          
+                          {/* UPDATED RESET BUTTON */}
+                          <button onClick={resetCombatState} className="mt-2 text-xs font-bold underline hover:text-ink">
                             {battleResult === 'error' ? 'Return' : 'Reset Arena'}
                           </button>
                       </div>

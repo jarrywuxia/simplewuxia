@@ -1,13 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 function FloatingReward({ rewards, onComplete }) {
   const [animationStage, setAnimationStage] = useState('initial');
+  const onCompleteRef = useRef(onComplete);
   
   // Calculate a random starting height between ~28% and 38%
   // This runs once when component mounts
   const [topPos] = useState(() => {
     return (38 + Math.random() * 6) + '%';
   });
+
+  // Keep the ref updated
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
     // 1. Start Rising
@@ -22,7 +28,7 @@ function FloatingReward({ rewards, onComplete }) {
     
     // 3. Complete
     const completeTimer = setTimeout(() => {
-      onComplete();
+      onCompleteRef.current(); // Use ref instead of prop directly
     }, 3000);
     
     return () => {
@@ -30,7 +36,7 @@ function FloatingReward({ rewards, onComplete }) {
       clearTimeout(fadeOutTimer);
       clearTimeout(completeTimer);
     };
-  }, [onComplete]);
+  }, []); // Empty dependency array - only run once on mount
 
   const getAnimationClasses = () => {
     switch (animationStage) {

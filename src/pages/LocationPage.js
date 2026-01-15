@@ -11,6 +11,8 @@ import { getRarityStyles } from '../utils/rarity';
 
 // Import Combat Component to embed it
 import CombatPage from './CombatPage'; 
+// IMPORT THE NEW COMPONENT
+import BoughtPopup from '../components/BoughtPopup';
 
 function LocationPage({ playerData, onPlayerUpdate }) {
   const [mode, setMode] = useState('HUB'); // 'HUB', 'COMBAT', 'TOWN'
@@ -18,7 +20,10 @@ function LocationPage({ playerData, onPlayerUpdate }) {
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [exploreResult, setExploreResult] = useState(null); // For storing combat/loot data
+  const [exploreResult, setExploreResult] = useState(null); 
+  
+  // NEW STATE: Track active coin popups
+  const [coinPopups, setCoinPopups] = useState([]);
 
   // Current Location Data
   const currentLocId = playerData.currentLocation || 'longtian_village';
@@ -34,7 +39,6 @@ function LocationPage({ playerData, onPlayerUpdate }) {
       const travelFn = httpsCallable(functions, 'travel');
       await travelFn({ destinationId: destId });
       await onPlayerUpdate();
-      // Reset modes on travel
       setMode('HUB');
       setSubMode('MENU');
     } catch (err) {
@@ -60,8 +64,8 @@ function LocationPage({ playerData, onPlayerUpdate }) {
       const result = await exploreFn();
       
       if (result.data.enemyId) {
-          setExploreResult(result.data); // Store enemy info
-          setMode('COMBAT'); // Switch to Combat View
+          setExploreResult(result.data); 
+          setMode('COMBAT'); 
       } else {
           setError("You found nothing of interest.");
       }
@@ -75,20 +79,43 @@ function LocationPage({ playerData, onPlayerUpdate }) {
     }
   };
 
-  const handleBuyItem = async (shopId, itemId) => {
+  // UPDATED: Now accepts price and event object
+  const handleBuyItem = async (shopId, itemId, price, e) => {
       if (loading) return;
+      
+      // Get button coordinates for the popup
+      const rect = e.currentTarget.getBoundingClientRect();
+      // Center the text horizontally on the button, and place it slightly above
+      const startX = rect.left + (rect.width / 2) - 20; 
+      const startY = rect.top;
+
       setLoading(true);
       setError('');
       try {
           const buyFn = httpsCallable(functions, 'buyItem');
           await buyFn({ shopId, itemId });
           await onPlayerUpdate();
-          // alert("Purchase successful!"); // Removed alert for smoother flow
+          
+          // ADD COIN POPUP ON SUCCESS
+          const newPopup = {
+            id: Date.now(),
+            x: startX,
+            y: startY,
+            text: `-${price}`,
+            icon: "/assets/icons/system/SODA_Icon_Orbs_Orb6.png"
+          };
+          setCoinPopups(prev => [...prev, newPopup]);
+
       } catch (err) {
           setError(err.message);
       } finally {
           setLoading(false);
       }
+  };
+
+  // Helper to remove popup after animation finishes
+  const removeCoinPopup = (id) => {
+    setCoinPopups(prev => prev.filter(cp => cp.id !== id));
   };
 
   // --- RENDERERS ---
@@ -122,7 +149,20 @@ function LocationPage({ playerData, onPlayerUpdate }) {
       const npc = NPCS[location.npcId];
 
       return (
-          <div className="card h-full flex flex-col animate-fadeIn">
+          <div className="card h-full flex flex-col animate-fadeIn relative">
+              {/* RENDER COIN POPUPS */}
+              {coinPopups.map(cp => (
+                <BoughtPopup 
+                  key={cp.id}
+                  x={cp.x}
+                  y={cp.y}
+                  text={cp.text}
+                  color="text-red-600"
+                  icon={cp.icon}
+                  onComplete={() => removeCoinPopup(cp.id)}
+                />
+              ))}
+
               {/* Town Header */}
               <div className="border-b border-border pb-4 mb-4 flex justify-between items-center">
                   <div>
@@ -182,16 +222,16 @@ function LocationPage({ playerData, onPlayerUpdate }) {
                                           </div>
                                       </div>
                                       <button 
-                                        onClick={() => handleBuyItem(location.shopId, item.id)}
+                                        // UPDATED: Pass price and event (e)
+                                        onClick={(e) => handleBuyItem(location.shopId, item.id, listing.price, e)}
                                         disabled={!canAfford || loading}
-                                        className={`px-3 py-1 text-xs font-bold border flex items-center gap-1
+                                        className={`px-3 py-1 text-xs font-bold border flex items-center gap-1 active:scale-95 transition-transform
                                             ${canAfford 
                                                 ? 'bg-accent text-white border-accent hover:bg-accent-light' 
                                                 : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
                                             }`}
                                       >
                                           <span>{listing.price}</span>
-                                          {/* REPLACED TEXT "SS" WITH ICON */}
                                           <img 
                                             src="/assets/icons/system/SODA_Icon_Orbs_Orb6.png" 
                                             alt="Spirit Stones" 
